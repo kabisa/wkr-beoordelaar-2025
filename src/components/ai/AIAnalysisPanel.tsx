@@ -6,8 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, Brain, Clock, Target, Zap } from 'lucide-react'
 import { XAFTransaction } from '@/types/xaf'
+import { PromptDebugger } from './PromptDebugger'
 
 interface AIAnalysisPanelProps {
   transactions?: XAFTransaction[]
@@ -22,12 +25,24 @@ interface AnalysisResult {
     model: string
     analysisType: string
     transactionCount: number
+    promptDetails?: {
+      analysisPrompt: string
+      transactionDataPreview: string
+      fullTransactionDataLength: number
+      systemInstruction: string
+      documentsIncluded: Array<{
+        filename: string
+        displayName: string
+        size: string
+      }>
+    }
   }
 }
 
 export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete }: AIAnalysisPanelProps) {
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>('')
   const [customPrompt, setCustomPrompt] = useState('')
+  const [showPromptDebugger, setShowPromptDebugger] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -105,7 +120,7 @@ export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete 
   }
 
   const handleRegularAnalysis = async (payload: any) => {
-    const response = await fetch('/api/ai/analyze', {
+    const response = await fetch('/api/ai/analyze-with-docs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -129,7 +144,7 @@ export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete 
   const handleStreamingAnalysis = async (payload: any) => {
     setIsStreaming(true)
 
-    const response = await fetch('/api/ai/stream', {
+    const response = await fetch('/api/ai/stream-with-docs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -172,11 +187,14 @@ export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete 
               } else if (data.type === 'complete') {
                 const finalResult: AnalysisResult = {
                   analysis: fullContent,
-                  metadata: metadata || {
-                    responseTime: 0,
-                    model: 'unknown',
-                    analysisType: selectedAnalysis,
-                    transactionCount: transactions.length
+                  metadata: {
+                    ...(metadata || {
+                      responseTime: 0,
+                      model: 'unknown',
+                      analysisType: selectedAnalysis,
+                      transactionCount: transactions.length
+                    }),
+                    ...(data.data.metadata || {})
                   }
                 }
 
@@ -248,6 +266,18 @@ export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete 
               />
             </div>
           )}
+
+          {/* Debug Toggle */}
+          <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+            <Switch
+              id="debug-mode"
+              checked={showPromptDebugger}
+              onCheckedChange={setShowPromptDebugger}
+            />
+            <Label htmlFor="debug-mode" className="text-sm">
+              Toon prompt details (debug mode)
+            </Label>
+          </div>
 
           <div className="flex gap-2">
             <Button
@@ -331,6 +361,12 @@ export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete 
             </div>
           </div>
         )}
+
+        {/* Prompt Debugger */}
+        <PromptDebugger
+          promptDetails={result?.metadata?.promptDetails}
+          isVisible={showPromptDebugger && result?.metadata?.promptDetails}
+        />
       </CardContent>
     </Card>
   )

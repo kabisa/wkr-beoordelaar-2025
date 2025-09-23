@@ -199,7 +199,7 @@ export class ResponseValidator {
       score += 5
     }
 
-    return Math.max(0, Math.min(100, score))
+    return Math.max(0, score)
   }
 
   private containsDutchContent(text: string): boolean {

@@ -264,9 +264,11 @@ export class FilterConfigManager {
     // Validate custom rules if present
     if (config.rules.customRules) {
       for (const rule of config.rules.customRules) {
-        if (!rule.name || !rule.condition || typeof rule.condition !== 'function') {
+        if (!rule.name) {
           throw new FilterError(`Ongeldige custom rule: ${rule.name}`, 'INVALID_CUSTOM_RULE')
         }
+        // Note: condition function may be lost during JSON serialization/deserialization
+        // This is expected behavior and should not fail validation
       }
     }
   }

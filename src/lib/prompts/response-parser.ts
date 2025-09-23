@@ -60,7 +60,9 @@ export class WKRResponseParser {
     const lines = findingsText.split('\n').filter(line => line.trim())
 
     for (const line of lines) {
-      if (line.includes('|') && !line.includes('---') && !line.toLowerCase().includes('grootboek')) {
+      if (line.includes('|') && !line.includes('---') &&
+          !line.toLowerCase().includes('grootboek') &&
+          !line.toLowerCase().includes('account')) {
         const finding = this.parseTableRow(line)
         if (finding) findings.push(finding)
       } else if (line.match(/^\d+\./)) {
@@ -75,16 +77,41 @@ export class WKRResponseParser {
   private parseTableRow(row: string): WKRFinding | null {
     const cells = row.split('|').map(cell => cell.trim()).filter(cell => cell)
 
-    if (cells.length < 4) return null
+    if (cells.length < 3) return null
+
+    // Handle different table formats
+    let accountId = this.extractAccountId(cells[0])
+    let description = cells[1]
+    let amount = 0
+    let isWKRRelevant = false
+    let confidence = 50
+    let reasoning = 'Geen specifieke redenering gegeven'
+
+    if (cells.length === 3) {
+      // 3 columns: Account | Description | Relevant
+      isWKRRelevant = this.parseWKRRelevant(cells[2])
+    } else if (cells.length === 4) {
+      // 4 columns: Account | Description | Amount | Relevant
+      amount = this.parseAmount(cells[2])
+      isWKRRelevant = this.parseWKRRelevant(cells[3])
+    } else if (cells.length >= 5) {
+      // 5+ columns: Account | Description | Amount | Relevant | Confidence | Reasoning
+      amount = this.parseAmount(cells[2])
+      isWKRRelevant = this.parseWKRRelevant(cells[3])
+      confidence = this.parseConfidence(cells[4] || '50%')
+      if (cells.length >= 6) {
+        reasoning = cells[5] || 'Geen specifieke redenering gegeven'
+      }
+    }
 
     return {
       transactionId: this.extractTransactionId(cells[0]),
-      accountId: this.extractAccountId(cells[0]),
-      description: cells[1],
-      amount: this.parseAmount(cells[2]),
-      isWKRRelevant: this.parseWKRRelevant(cells[3]),
-      confidence: this.parseConfidence(cells[4] || '50%'),
-      reasoning: cells[5] || 'Geen specifieke redenering gegeven'
+      accountId,
+      description,
+      amount,
+      isWKRRelevant,
+      confidence,
+      reasoning
     }
   }
 
@@ -248,12 +275,46 @@ export class WKRResponseParser {
   }
 
   private parseAmount(amountStr: string): number {
-    const cleaned = amountStr.replace(/[€\s,]/g, '')
+    // Remove currency symbols and whitespace
+    let cleaned = amountStr.replace(/[€\s]/g, '')
+
+    // Handle different number formats
+    if (cleaned.includes(',') && cleaned.includes('.')) {
+      // Determine format by position of comma vs dot
+      const lastComma = cleaned.lastIndexOf(',')
+      const lastDot = cleaned.lastIndexOf('.')
+
+      if (lastComma > lastDot) {
+        // European format: 1.234,56
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+      } else {
+        // US format: 1,234.56
+        cleaned = cleaned.replace(/,/g, '')
+      }
+    } else if (cleaned.includes(',')) {
+      // Only comma - could be thousands separator or decimal
+      const commaCount = (cleaned.match(/,/g) || []).length
+      if (commaCount === 1 && cleaned.indexOf(',') === cleaned.length - 3) {
+        // Likely decimal comma: 1234,56
+        cleaned = cleaned.replace(',', '.')
+      } else {
+        // Thousands separator: 1,234
+        cleaned = cleaned.replace(/,/g, '')
+      }
+    }
+
     return parseFloat(cleaned) || 0
   }
 
   private parseWKRRelevant(relevantStr: string): boolean {
     const lower = relevantStr.toLowerCase()
+
+    // Check for negative indicators first
+    if (lower.includes('nee') || lower.includes('no') || lower.includes('niet')) {
+      return false
+    }
+
+    // Then check for positive indicators
     return lower.includes('ja') || lower.includes('yes') || lower.includes('wel') || lower.includes('relevant')
   }
 
