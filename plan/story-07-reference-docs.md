@@ -8,457 +8,370 @@
 Als systeem wil ik WKR referentie documenten kunnen verwerken zodat de AI analyse kan worden verrijkt met actuele Nederlandse regelgeving.
 
 ## Acceptatiecriteria
-- [x] PDF text extractie (wkr1.pdf, wkr2.pdf)
-- [x] Context opbouw voor Gemini
-- [x] Kennisbank structuur
-- [x] OCR ondersteuning voor gescande PDFs
-- [x] Tekst preprocessing en cleaning
-- [x] Chunking voor grote documenten
+- [x] Google AI File API integratie
+- [x] Eenmalige upload van referentie documenten (wkr1.pdf, wkr2.pdf)
+- [x] File ID caching en hergebruik
+- [x] Context enrichment voor Gemini prompts
+- [x] Automatische document updates bij wijzigingen
+- [x] Error handling voor file operations
 
 ## Technical Implementation
 
-### PDF Processing Pipeline
+### Google AI File Manager Integration
 ```typescript
-// src/lib/documents/pdf-processor.ts
-import pdf from 'pdf-parse'
+// src/lib/documents/file-manager.ts
+import { GoogleAIFileManager } from '@google/generative-ai/server'
 import fs from 'fs/promises'
 import path from 'path'
 
-export interface ProcessedDocument {
+export interface UploadedDocument {
   filename: string
-  title: string
-  content: string
-  chunks: DocumentChunk[]
-  metadata: DocumentMetadata
-  lastProcessed: Date
+  fileUri: string
+  uploadedAt: Date
+  displayName: string
+  mimeType: string
+  sizeBytes: number
 }
 
-export interface DocumentChunk {
-  id: string
-  content: string
-  section: string
-  startPage: number
-  endPage: number
-  relevanceScore?: number
+export interface DocumentCache {
+  documents: UploadedDocument[]
+  lastUpdated: Date
+  version: string
 }
 
-export interface DocumentMetadata {
-  pageCount: number
-  size: number
-  version?: string
-  subject?: string
-  author?: string
-  creationDate?: Date
-}
+export class WKRDocumentManager {
+  private fileManager: GoogleAIFileManager
+  private cacheFile = path.join(process.cwd(), '.cache', 'document-cache.json')
+  private documentsPath = path.join(process.cwd(), 'plan')
 
-export class PDFProcessor {
-  private readonly documentsPath = path.join(process.cwd(), 'plan')
+  constructor(apiKey: string) {
+    this.fileManager = new GoogleAIFileManager(apiKey)
+  }
 
-  async processWKRDocuments(): Promise<ProcessedDocument[]> {
-    const documents: ProcessedDocument[] = []
-
+  async initializeDocuments(): Promise<UploadedDocument[]> {
     try {
-      const wkr1 = await this.processDocument('wkr1.pdf')
-      const wkr2 = await this.processDocument('wkr2.pdf')
+      // Check cache first
+      const cached = await this.loadCache()
+      if (cached && this.isCacheValid(cached)) {
+        console.log('Using cached document references')
+        return cached.documents
+      }
 
-      documents.push(wkr1, wkr2)
+      // Upload documents if not cached or cache is invalid
+      console.log('Uploading WKR reference documents...')
+      const documents = await this.uploadWKRDocuments()
 
-      // Cache processed documents
-      await this.cacheDocuments(documents)
+      // Save to cache
+      await this.saveCache({
+        documents,
+        lastUpdated: new Date(),
+        version: '1.0.0'
+      })
 
       return documents
-    } catch (error) {
-      throw new DocumentProcessingError(
-        'Failed to process WKR documents',
-        error
-      )
-    }
-  }
-
-  private async processDocument(filename: string): Promise<ProcessedDocument> {
-    const filePath = path.join(this.documentsPath, filename)
-
-    // Check if file exists
-    await this.validateFile(filePath)
-
-    // Read and parse PDF
-    const buffer = await fs.readFile(filePath)
-    const pdfData = await pdf(buffer)
-
-    // Extract and clean text
-    const cleanedText = this.cleanText(pdfData.text)
-
-    // Create chunks
-    const chunks = this.createChunks(cleanedText, filename)
-
-    // Extract metadata
-    const metadata = this.extractMetadata(pdfData, buffer)
-
-    return {
-      filename,
-      title: this.extractTitle(cleanedText) || filename,
-      content: cleanedText,
-      chunks,
-      metadata,
-      lastProcessed: new Date()
-    }
-  }
-
-  private async validateFile(filePath: string): Promise<void> {
-    try {
-      const stats = await fs.stat(filePath)
-
-      if (!stats.isFile()) {
-        throw new Error(`${filePath} is not a file`)
-      }
-
-      if (stats.size === 0) {
-        throw new Error(`${filePath} is empty`)
-      }
-
-      if (stats.size > 50 * 1024 * 1024) { // 50MB limit
-        throw new Error(`${filePath} is too large (>50MB)`)
-      }
 
     } catch (error) {
-      throw new DocumentProcessingError(
-        `File validation failed: ${filePath}`,
-        error
-      )
+      console.error('Failed to initialize documents:', error)
+      throw new DocumentManagerError('Document initialization failed', error)
     }
   }
 
-  private cleanText(text: string): string {
-    return text
-      // Remove excessive whitespace
-      .replace(/\s+/g, ' ')
-      // Remove page numbers and headers/footers
-      .replace(/\n\s*\d+\s*\n/g, '\n')
-      // Remove special characters that interfere with parsing
-      .replace(/[^\w\s\n.,;:!?()-]/g, '')
-      // Normalize line endings
-      .replace(/\r\n/g, '\n')
-      // Remove empty lines
-      .replace(/\n\s*\n/g, '\n')
-      .trim()
-  }
-
-  private createChunks(text: string, filename: string): DocumentChunk[] {
-    const chunks: DocumentChunk[] = []
-    const maxChunkSize = 1500 // characters
-    const overlap = 200 // character overlap between chunks
-
-    // Split by sections first
-    const sections = this.identifySections(text)
-
-    for (const section of sections) {
-      if (section.content.length <= maxChunkSize) {
-        chunks.push({
-          id: `${filename}_${section.title}_${chunks.length}`,
-          content: section.content,
-          section: section.title,
-          startPage: section.startPage,
-          endPage: section.endPage
-        })
-      } else {
-        // Split large sections into smaller chunks
-        const sectionChunks = this.splitIntoChunks(
-          section.content,
-          maxChunkSize,
-          overlap
-        )
-
-        sectionChunks.forEach((chunk, index) => {
-          chunks.push({
-            id: `${filename}_${section.title}_${index}`,
-            content: chunk,
-            section: section.title,
-            startPage: section.startPage,
-            endPage: section.endPage
-          })
-        })
-      }
-    }
-
-    return chunks
-  }
-
-  private identifySections(text: string): Array<{
-    title: string
-    content: string
-    startPage: number
-    endPage: number
-  }> {
-    const sections = []
-
-    // Common WKR document section patterns
-    const sectionPatterns = [
-      /(?:hoofdstuk|artikel|paragraaf|sectie)\s+\d+[^\\n]*/gi,
-      /\d+\.\s+[A-Z][^\\n]{10,}/g,
-      /[A-Z][A-Z\s]{5,}(?=\n)/g
+  private async uploadWKRDocuments(): Promise<UploadedDocument[]> {
+    const documentFiles = [
+      { filename: 'wkr1.pdf', displayName: 'WKR Regelgeving Deel 1' },
+      { filename: 'wkr2.pdf', displayName: 'WKR Regelgeving Deel 2' }
     ]
 
-    // Simple implementation - split by major headings
-    const lines = text.split('\n')
-    let currentSection = { title: 'Inleiding', content: '', startPage: 1, endPage: 1 }
+    const uploadedDocs: UploadedDocument[] = []
 
-    for (const line of lines) {
-      const isHeading = sectionPatterns.some(pattern => pattern.test(line))
+    for (const doc of documentFiles) {
+      const filePath = path.join(this.documentsPath, doc.filename)
 
-      if (isHeading && currentSection.content.length > 100) {
-        sections.push({ ...currentSection })
-        currentSection = {
-          title: line.trim(),
-          content: '',
-          startPage: currentSection.endPage,
-          endPage: currentSection.endPage
-        }
-      } else {
-        currentSection.content += line + '\n'
+      try {
+        // Verify file exists
+        await fs.access(filePath)
+        const stats = await fs.stat(filePath)
+
+        console.log(`Uploading ${doc.filename}...`)
+
+        const uploadResult = await this.fileManager.uploadFile(filePath, {
+          mimeType: 'application/pdf',
+          displayName: doc.displayName
+        })
+
+        uploadedDocs.push({
+          filename: doc.filename,
+          fileUri: uploadResult.file.uri,
+          uploadedAt: new Date(),
+          displayName: doc.displayName,
+          mimeType: 'application/pdf',
+          sizeBytes: stats.size
+        })
+
+        console.log(`✅ Uploaded ${doc.filename} -> ${uploadResult.file.uri}`)
+
+      } catch (error) {
+        console.error(`Failed to upload ${doc.filename}:`, error)
+        throw new DocumentManagerError(`Upload failed for ${doc.filename}`, error)
       }
     }
 
-    if (currentSection.content.length > 0) {
-      sections.push(currentSection)
-    }
-
-    return sections
+    return uploadedDocs
   }
 
-  private splitIntoChunks(
-    text: string,
-    maxSize: number,
-    overlap: number
-  ): string[] {
-    const chunks: string[] = []
-    let start = 0
-
-    while (start < text.length) {
-      let end = Math.min(start + maxSize, text.length)
-
-      // Try to break at sentence boundary
-      if (end < text.length) {
-        const lastSentence = text.lastIndexOf('.', end)
-        const lastNewline = text.lastIndexOf('\n', end)
-        const breakPoint = Math.max(lastSentence, lastNewline)
-
-        if (breakPoint > start + maxSize * 0.7) {
-          end = breakPoint + 1
-        }
-      }
-
-      chunks.push(text.slice(start, end).trim())
-      start = Math.max(start + maxSize - overlap, end)
-    }
-
-    return chunks
+  async getDocumentReferences(): Promise<Array<{ fileUri: string; mimeType: string }>> {
+    const documents = await this.initializeDocuments()
+    return documents.map(doc => ({
+      fileUri: doc.fileUri,
+      mimeType: doc.mimeType
+    }))
   }
 
-  private extractMetadata(pdfData: any, buffer: Buffer): DocumentMetadata {
-    return {
-      pageCount: pdfData.numpages || 0,
-      size: buffer.length,
-      version: pdfData.version,
-      subject: pdfData.info?.Subject,
-      author: pdfData.info?.Author,
-      creationDate: pdfData.info?.CreationDate ? new Date(pdfData.info.CreationDate) : undefined
-    }
-  }
+  async refreshDocuments(): Promise<UploadedDocument[]> {
+    console.log('Refreshing document cache...')
 
-  private extractTitle(text: string): string | null {
-    // Extract title from first few lines
-    const lines = text.split('\n').slice(0, 10)
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed.length > 10 && trimmed.length < 100) {
-        // Likely a title
-        if (trimmed.toLowerCase().includes('werkkosten') ||
-            trimmed.toLowerCase().includes('wkr') ||
-            trimmed.toLowerCase().includes('regeling')) {
-          return trimmed
+    // Delete old files from Gemini
+    const cached = await this.loadCache()
+    if (cached) {
+      for (const doc of cached.documents) {
+        try {
+          await this.fileManager.deleteFile(this.extractFileId(doc.fileUri))
+          console.log(`Deleted old file: ${doc.filename}`)
+        } catch (error) {
+          console.warn(`Failed to delete ${doc.filename}:`, error)
         }
       }
     }
 
-    return null
+    // Clear cache and re-upload
+    await this.clearCache()
+    return this.initializeDocuments()
   }
 
-  private async cacheDocuments(documents: ProcessedDocument[]): Promise<void> {
-    const cacheDir = path.join(process.cwd(), '.cache', 'documents')
-
+  private async loadCache(): Promise<DocumentCache | null> {
     try {
-      await fs.mkdir(cacheDir, { recursive: true })
+      const cacheData = await fs.readFile(this.cacheFile, 'utf-8')
+      return JSON.parse(cacheData)
+    } catch {
+      return null
+    }
+  }
+
+  private async saveCache(cache: DocumentCache): Promise<void> {
+    try {
+      await fs.mkdir(path.dirname(this.cacheFile), { recursive: true })
+      await fs.writeFile(this.cacheFile, JSON.stringify(cache, null, 2))
+    } catch (error) {
+      console.warn('Failed to save document cache:', error)
+    }
+  }
+
+  private async clearCache(): Promise<void> {
+    try {
+      await fs.unlink(this.cacheFile)
+    } catch {
+      // Cache file doesn't exist, that's fine
+    }
+  }
+
+  private isCacheValid(cache: DocumentCache): boolean {
+    // Cache is valid for 24 hours
+    const maxAge = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+    const age = Date.now() - new Date(cache.lastUpdated).getTime()
+
+    return age < maxAge && cache.documents.length > 0
+  }
+
+  private extractFileId(fileUri: string): string {
+    // Extract file ID from URI like "files/abc123..."
+    return fileUri.split('/').pop() || fileUri
+  }
+
+  async validateDocumentAccess(): Promise<boolean> {
+    try {
+      const documents = await this.initializeDocuments()
 
       for (const doc of documents) {
-        const cachePath = path.join(cacheDir, `${doc.filename}.json`)
-        await fs.writeFile(cachePath, JSON.stringify(doc, null, 2))
+        const fileId = this.extractFileId(doc.fileUri)
+        await this.fileManager.getFile(fileId)
       }
+
+      return true
     } catch (error) {
-      console.warn('Failed to cache documents:', error)
-      // Non-critical error, continue execution
+      console.error('Document access validation failed:', error)
+      return false
     }
+  }
+
+  async getDocumentInfo(): Promise<Array<{
+    filename: string
+    displayName: string
+    sizeBytes: number
+    uploadedAt: Date
+  }>> {
+    const documents = await this.initializeDocuments()
+    return documents.map(doc => ({
+      filename: doc.filename,
+      displayName: doc.displayName,
+      sizeBytes: doc.sizeBytes,
+      uploadedAt: doc.uploadedAt
+    }))
   }
 }
 ```
 
-### Knowledge Base Builder
+### Enhanced Gemini Client with Document Support
 ```typescript
-// src/lib/documents/knowledge-base.ts
-export class WKRKnowledgeBase {
-  private documents: ProcessedDocument[] = []
-  private searchIndex: Map<string, DocumentChunk[]> = new Map()
+// src/lib/ai/gemini-with-docs.ts
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { WKRDocumentManager } from '@/lib/documents/file-manager'
+
+export class GeminiWithDocuments {
+  private genAI: GoogleGenerativeAI
+  private documentManager: WKRDocumentManager
+  private model: any
+
+  constructor(apiKey: string) {
+    this.genAI = new GoogleGenerativeAI(apiKey)
+    this.documentManager = new WKRDocumentManager(apiKey)
+  }
 
   async initialize(): Promise<void> {
-    const processor = new PDFProcessor()
-    this.documents = await processor.processWKRDocuments()
-    await this.buildSearchIndex()
+    // Initialize documents and get references
+    await this.documentManager.initializeDocuments()
+
+    // Create model with system instruction
+    this.model = this.genAI.getGenerativeModel({
+      model: 'gemini-1.5-pro',
+      systemInstruction: `
+Je bent een gespecialiseerde Nederlandse fiscalist met expertise in de werkkostenregeling (WKR).
+Je hebt toegang tot de officiële WKR documentatie die als referentie is geüpload.
+
+BELANGRIJKE INSTRUCTIES:
+- Gebruik ALLEEN Nederlandse boekhoudterminologie
+- Geef ALTIJD een zekerheidspercentage (0-100%)
+- Verwijs naar specifieke WKR artikelen uit de geüploade documenten
+- GEBRUIK NOOIT HET INTERNET OM TE ZOEKEN
+- Baseer je analyse uitsluitend op de verstrekte documenten en transacties
+
+Voor elke boeking bepaal je:
+1. **Valt de boeking onder de werkkostenregeling?** (Ja/Nee)
+2. **Hoe zeker ben je?** (percentage)
+3. **Is er een gerichte vrijstelling van toepassing?**
+4. **Specifieke redenering met verwijzing naar documenten**
+      `
+    })
   }
 
-  private async buildSearchIndex(): Promise<void> {
-    // Build keyword-based search index
-    const keywords = [
-      'werkkostenregeling', 'wkr', 'vrije ruimte', 'loonsom',
-      'vrijstelling', 'vergoeding', 'verstrekking', 'werkgever',
-      'werknemer', 'belasting', 'reiskosten', 'representatie',
-      'opleiding', 'relatiegeschenk', 'fiets'
-    ]
+  async generateAnalysisWithDocuments(
+    prompt: string,
+    transactionData: string
+  ): Promise<string> {
+    try {
+      // Get document references
+      const documentRefs = await this.documentManager.getDocumentReferences()
 
-    for (const keyword of keywords) {
-      const relevantChunks = this.findRelevantChunks(keyword)
-      this.searchIndex.set(keyword.toLowerCase(), relevantChunks)
-    }
-  }
+      // Prepare content array with documents and prompt
+      const content = [
+        // Include document references
+        ...documentRefs.map(doc => ({
+          fileData: {
+            fileUri: doc.fileUri,
+            mimeType: doc.mimeType
+          }
+        })),
+        // Add the analysis prompt and data
+        {
+          text: `
+TRANSACTIEGEGEVENS:
+${transactionData}
 
-  private findRelevantChunks(keyword: string): DocumentChunk[] {
-    const relevantChunks: DocumentChunk[] = []
+ANALYSE OPDRACHT:
+${prompt}
 
-    for (const doc of this.documents) {
-      for (const chunk of doc.chunks) {
-        const content = chunk.content.toLowerCase()
-        const keywordLower = keyword.toLowerCase()
-
-        // Calculate relevance score
-        const occurrences = (content.match(new RegExp(keywordLower, 'g')) || []).length
-        const proximity = this.calculateProximity(content, keywordLower)
-        const relevanceScore = occurrences * 10 + proximity
-
-        if (relevanceScore > 5) {
-          relevantChunks.push({
-            ...chunk,
-            relevanceScore
-          })
+Analyseer de bovenstaande transacties volgens de Nederlandse werkkostenregeling,
+gebaseerd op de geüploade WKR documentatie.
+          `
         }
-      }
-    }
+      ]
 
-    // Sort by relevance score
-    return relevantChunks.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+      const result = await this.model.generateContent(content)
+      const response = await result.response
+      return response.text()
+
+    } catch (error) {
+      console.error('Document-enhanced analysis failed:', error)
+      throw new Error(`Analysis with documents failed: ${error.message}`)
+    }
   }
 
-  private calculateProximity(text: string, keyword: string): number {
-    const words = text.split(/\s+/)
-    let proximityScore = 0
+  async generateStreamingAnalysisWithDocuments(
+    prompt: string,
+    transactionData: string
+  ): Promise<AsyncIterable<string>> {
+    try {
+      const documentRefs = await this.documentManager.getDocumentReferences()
 
-    for (let i = 0; i < words.length; i++) {
-      if (words[i].includes(keyword)) {
-        // Higher score if keyword appears near important terms
-        const context = words.slice(Math.max(0, i - 5), i + 6).join(' ')
-        const importantTerms = ['artikel', 'regel', 'bepaling', 'vrijstelling', 'berekening']
+      const content = [
+        ...documentRefs.map(doc => ({
+          fileData: {
+            fileUri: doc.fileUri,
+            mimeType: doc.mimeType
+          }
+        })),
+        {
+          text: `
+TRANSACTIEGEGEVENS:
+${transactionData}
 
-        for (const term of importantTerms) {
-          if (context.includes(term)) {
-            proximityScore += 5
+ANALYSE OPDRACHT:
+${prompt}
+          `
+        }
+      ]
+
+      const result = await this.model.generateContentStream(content)
+
+      return {
+        async *[Symbol.asyncIterator]() {
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text()
+            if (chunkText) {
+              yield chunkText
+            }
           }
         }
       }
+
+    } catch (error) {
+      console.error('Streaming analysis with documents failed:', error)
+      throw new Error(`Streaming analysis failed: ${error.message}`)
     }
-
-    return proximityScore
   }
 
-  getRelevantContext(query: string): string {
-    const queryTerms = query.toLowerCase().split(/\s+/)
-    const relevantChunks: DocumentChunk[] = []
-
-    // Find chunks relevant to query terms
-    for (const term of queryTerms) {
-      const chunks = this.searchIndex.get(term) || []
-      relevantChunks.push(...chunks.slice(0, 3)) // Top 3 per term
-    }
-
-    // Remove duplicates and sort by relevance
-    const uniqueChunks = Array.from(
-      new Map(relevantChunks.map(chunk => [chunk.id, chunk])).values()
-    ).sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-
-    // Combine top chunks into context
-    const topChunks = uniqueChunks.slice(0, 5)
-    return topChunks.map(chunk => `
-**${chunk.section}**
-${chunk.content}
-`).join('\n---\n')
-  }
-
-  getWKRRules(): string {
-    const ruleChunks = this.findRelevantChunks('regel')
-      .concat(this.findRelevantChunks('artikel'))
-      .concat(this.findRelevantChunks('bepaling'))
-
-    const uniqueRules = Array.from(
-      new Map(ruleChunks.map(chunk => [chunk.id, chunk])).values()
-    ).slice(0, 10)
-
-    return uniqueRules.map(chunk => chunk.content).join('\n\n')
-  }
-
-  getExemptionRules(): string {
-    const exemptionChunks = this.findRelevantChunks('vrijstelling')
-      .concat(this.findRelevantChunks('uitgezonderd'))
-      .concat(this.findRelevantChunks('niet belast'))
-
-    return exemptionChunks.slice(0, 8)
-      .map(chunk => chunk.content)
-      .join('\n\n')
-  }
-
-  getCalculationRules(): string {
-    const calcChunks = this.findRelevantChunks('berekening')
-      .concat(this.findRelevantChunks('loonsom'))
-      .concat(this.findRelevantChunks('vrije ruimte'))
-      .concat(this.findRelevantChunks('1,7%'))
-
-    return calcChunks.slice(0, 6)
-      .map(chunk => chunk.content)
-      .join('\n\n')
-  }
-
-  searchDocuments(query: string, limit: number = 5): DocumentChunk[] {
-    const queryTerms = query.toLowerCase().split(/\s+/)
-    const allChunks = this.documents.flatMap(doc => doc.chunks)
-
-    // Score each chunk based on query terms
-    const scoredChunks = allChunks.map(chunk => {
-      let score = 0
-      const content = chunk.content.toLowerCase()
-
-      for (const term of queryTerms) {
-        const occurrences = (content.match(new RegExp(term, 'g')) || []).length
-        score += occurrences * 10
-
-        // Bonus for exact phrase matches
-        if (content.includes(query.toLowerCase())) {
-          score += 50
-        }
+  async getDocumentStatus(): Promise<{
+    isInitialized: boolean
+    documentsAvailable: number
+    lastUpdate: Date | null
+  }> {
+    try {
+      const documents = await this.documentManager.getDocumentInfo()
+      return {
+        isInitialized: documents.length > 0,
+        documentsAvailable: documents.length,
+        lastUpdate: documents.length > 0 ? documents[0].uploadedAt : null
       }
+    } catch {
+      return {
+        isInitialized: false,
+        documentsAvailable: 0,
+        lastUpdate: null
+      }
+    }
+  }
 
-      return { ...chunk, relevanceScore: score }
-    })
-
-    return scoredChunks
-      .filter(chunk => chunk.relevanceScore! > 0)
-      .sort((a, b) => b.relevanceScore! - a.relevanceScore!)
-      .slice(0, limit)
+  async refreshDocuments(): Promise<void> {
+    await this.documentManager.refreshDocuments()
   }
 }
 ```
@@ -466,32 +379,36 @@ ${chunk.content}
 ### Document Error Handling
 ```typescript
 // src/lib/documents/document-errors.ts
-export class DocumentProcessingError extends Error {
+export class DocumentManagerError extends Error {
   constructor(
     message: string,
     public originalError?: any,
-    public documentPath?: string
+    public documentFilename?: string
   ) {
     super(message)
-    this.name = 'DocumentProcessingError'
+    this.name = 'DocumentManagerError'
   }
 }
 
 export class DocumentValidator {
-  static async validateWKRDocuments(): Promise<ValidationResult[]> {
+  static async validateLocalDocuments(): Promise<ValidationResult[]> {
     const results: ValidationResult[] = []
     const requiredFiles = ['wkr1.pdf', 'wkr2.pdf']
+    const documentsPath = path.join(process.cwd(), 'plan')
 
     for (const filename of requiredFiles) {
-      const result = await this.validateDocument(filename)
+      const result = await this.validateLocalDocument(filename, documentsPath)
       results.push(result)
     }
 
     return results
   }
 
-  private static async validateDocument(filename: string): Promise<ValidationResult> {
-    const filePath = path.join(process.cwd(), 'plan', filename)
+  private static async validateLocalDocument(
+    filename: string,
+    documentsPath: string
+  ): Promise<ValidationResult> {
+    const filePath = path.join(documentsPath, filename)
 
     try {
       const stats = await fs.stat(filePath)
@@ -513,22 +430,20 @@ export class DocumentValidator {
         }
       }
 
-      // Try to parse PDF
-      const buffer = await fs.readFile(filePath)
-      const pdfData = await pdf(buffer)
+      // Size limit check (Gemini supports files up to 2GB)
+      if (stats.size > 100 * 1024 * 1024) { // 100MB practical limit
+        return {
+          filename,
+          isValid: false,
+          errors: ['File too large (>100MB). Consider splitting the document.']
+        }
+      }
 
       const warnings: string[] = []
 
-      if (pdfData.numpages < 5) {
-        warnings.push('Document has very few pages (<5)')
-      }
-
-      if (!pdfData.text || pdfData.text.length < 1000) {
-        warnings.push('Document contains very little text')
-      }
-
-      if (!pdfData.text.toLowerCase().includes('werkkosten')) {
-        warnings.push('Document may not be WKR-related')
+      // Check if file is likely a WKR document based on filename
+      if (!filename.toLowerCase().includes('wkr')) {
+        warnings.push('Filename does not indicate WKR content')
       }
 
       return {
@@ -536,9 +451,8 @@ export class DocumentValidator {
         isValid: true,
         warnings,
         metadata: {
-          pageCount: pdfData.numpages,
           size: stats.size,
-          textLength: pdfData.text?.length || 0
+          lastModified: stats.mtime
         }
       }
 
@@ -546,8 +460,17 @@ export class DocumentValidator {
       return {
         filename,
         isValid: false,
-        errors: [`Failed to process document: ${error.message}`]
+        errors: [`Failed to access document: ${error.message}`]
       }
+    }
+  }
+
+  static async validateUploadedDocuments(documentManager: WKRDocumentManager): Promise<boolean> {
+    try {
+      return await documentManager.validateDocumentAccess()
+    } catch (error) {
+      console.error('Failed to validate uploaded documents:', error)
+      return false
     }
   }
 }
@@ -558,130 +481,151 @@ interface ValidationResult {
   errors?: string[]
   warnings?: string[]
   metadata?: {
-    pageCount: number
     size: number
-    textLength: number
+    lastModified: Date
   }
 }
 ```
 
-### Integration with Prompt System
+### Integration with Analysis System
 ```typescript
-// src/lib/documents/context-integration.ts
-export class DocumentContextIntegrator {
-  private knowledgeBase: WKRKnowledgeBase
+// src/lib/analysis/document-enhanced-analysis.ts
+import { GeminiWithDocuments } from '@/lib/ai/gemini-with-docs'
+import { WKRPromptBuilder } from '@/lib/prompts/wkr-prompts'
 
-  constructor(knowledgeBase: WKRKnowledgeBase) {
-    this.knowledgeBase = knowledgeBase
+export class DocumentEnhancedAnalysis {
+  private geminiWithDocs: GeminiWithDocuments
+
+  constructor(apiKey: string) {
+    this.geminiWithDocs = new GeminiWithDocuments(apiKey)
   }
 
-  async enhancePromptWithContext(
-    basePrompt: string,
-    transactionData: FilteredTransaction[]
-  ): Promise<string> {
-    // Analyze transaction types to determine relevant context
-    const contextQueries = this.generateContextQueries(transactionData)
+  async initialize(): Promise<void> {
+    await this.geminiWithDocs.initialize()
+  }
 
-    // Gather relevant context from knowledge base
-    const contexts = await Promise.all(
-      contextQueries.map(query => this.knowledgeBase.getRelevantContext(query))
+  async performAnalysisWithDocuments(
+    transactions: FilteredTransaction[],
+    analysisType: 'standard' | 'compliance' | 'detailed' = 'standard'
+  ): Promise<string> {
+    // Format transaction data
+    const transactionData = this.formatTransactionsForAnalysis(transactions)
+
+    // Build enhanced prompt based on analysis type
+    const basePrompt = this.buildPromptForAnalysisType(analysisType, transactions)
+
+    // Perform analysis with document context
+    return await this.geminiWithDocs.generateAnalysisWithDocuments(
+      basePrompt,
+      transactionData
+    )
+  }
+
+  async performStreamingAnalysisWithDocuments(
+    transactions: FilteredTransaction[],
+    analysisType: 'standard' | 'compliance' | 'detailed' = 'standard'
+  ): Promise<AsyncIterable<string>> {
+    const transactionData = this.formatTransactionsForAnalysis(transactions)
+    const basePrompt = this.buildPromptForAnalysisType(analysisType, transactions)
+
+    return await this.geminiWithDocs.generateStreamingAnalysisWithDocuments(
+      basePrompt,
+      transactionData
+    )
+  }
+
+  private formatTransactionsForAnalysis(transactions: FilteredTransaction[]): string {
+    const header = "| Grootboek | Boeking | Bedrag | Datum |"
+    const separator = "|---|---|---|---|"
+
+    const rows = transactions.map(tx =>
+      `| ${tx.grootboek} | ${tx.boeking} | €${tx.bedrag.toFixed(2)} | ${tx.datum} |`
     )
 
-    // Combine and deduplicate context
-    const combinedContext = this.combineContexts(contexts)
-
-    return `${basePrompt}
-
-REFERENTIE CONTEXT UIT WKR DOCUMENTEN:
-${combinedContext}
-
-Let op: Gebruik deze context als aanvulling op je bestaande kennis. Bij tegenstrijdigheden geef je voorrang aan de meest recente officiële regelgeving.`
+    return [header, separator, ...rows].join('\n')
   }
 
-  private generateContextQueries(transactions: FilteredTransaction[]): string[] {
-    const queries = new Set<string>()
+  private buildPromptForAnalysisType(
+    analysisType: string,
+    transactions: FilteredTransaction[]
+  ): string {
+    const basePrompt = `
+Analyseer de onderstaande transacties volgens de Nederlandse werkkostenregeling.
+Gebruik de geüploade WKR documentatie als primaire bron voor je analyse.
 
-    // Add base queries
-    queries.add('werkkostenregeling algemeen')
-    queries.add('vrije ruimte berekening')
-    queries.add('loonsom bepaling')
+Voor elke transactie:
+1. Bepaal of deze onder de WKR valt (ja/nee)
+2. Geef een zekerheidspercentage (0-100%)
+3. Identificeer relevante vrijstellingen
+4. Verwijs naar specifieke artikelen uit de documenten
 
-    // Analyze transaction patterns to add specific queries
-    for (const tx of transactions) {
-      const description = tx.boeking.toLowerCase()
+Formatteer je antwoord als duidelijk gestructureerde markdown.
+    `
 
-      if (description.includes('reis') || description.includes('km')) {
-        queries.add('reiskosten woon-werk')
-        queries.add('zakelijke reiskosten')
-      }
+    switch (analysisType) {
+      case 'compliance':
+        return `${basePrompt}
 
-      if (description.includes('telefoon') || description.includes('mobiel')) {
-        queries.add('telefoonkosten zakelijk privé')
-      }
+FOCUS OP COMPLIANCE:
+- Identificeer mogelijke compliance risico's
+- Controleer op correcte toepassing van vrijstellingen
+- Geef aanbevelingen voor risicomitigatie
+        `
 
-      if (description.includes('opleiding') || description.includes('cursus')) {
-        queries.add('opleidingskosten vrijstelling')
-      }
+      case 'detailed':
+        return `${basePrompt}
 
-      if (description.includes('representatie') || description.includes('relatie')) {
-        queries.add('representatiekosten')
-        queries.add('relatiegeschenken')
-      }
+GEDETAILLEERDE ANALYSE:
+- Bereken de vrije ruimte op basis van geschatte loonsom
+- Geef specifieke aanbevelingen per transactie
+- Analyseer trends en patronen in de uitgaven
+- Suggereer optimalisaties voor WKR gebruik
+        `
 
-      if (description.includes('fiets') || description.includes('lease')) {
-        queries.add('fiets van de zaak')
-        queries.add('leaseauto privégebruik')
-      }
+      default:
+        return basePrompt
     }
-
-    return Array.from(queries)
   }
 
-  private combineContexts(contexts: string[]): string {
-    // Remove duplicates and combine contexts
-    const uniqueContexts = Array.from(new Set(contexts.filter(ctx => ctx.trim())))
+  async getDocumentStatus() {
+    return await this.geminiWithDocs.getDocumentStatus()
+  }
 
-    // Limit total context length to prevent token overflow
-    const maxContextLength = 3000 // characters
-    let combinedLength = 0
-    const includedContexts: string[] = []
-
-    for (const context of uniqueContexts) {
-      if (combinedLength + context.length < maxContextLength) {
-        includedContexts.push(context)
-        combinedLength += context.length
-      }
-    }
-
-    return includedContexts.join('\n\n---\n\n')
+  async refreshDocuments(): Promise<void> {
+    await this.geminiWithDocs.refreshDocuments()
   }
 }
 ```
 
 ## API Integration
 
-### Document Processing Endpoint
+### Document Management Endpoint
 ```typescript
-// src/app/api/documents/process/route.ts
+// src/app/api/documents/initialize/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { WKRKnowledgeBase } from '@/lib/documents/knowledge-base'
+import { WKRDocumentManager } from '@/lib/documents/file-manager'
 
 export async function POST(request: NextRequest) {
   try {
-    const knowledgeBase = new WKRKnowledgeBase()
-    await knowledgeBase.initialize()
+    const documentManager = new WKRDocumentManager(process.env.GOOGLE_AI_API_KEY!)
+    const documents = await documentManager.initializeDocuments()
 
     return NextResponse.json({
       success: true,
-      message: 'Documents processed successfully',
-      documentsCount: 2
+      message: 'Documents initialized successfully',
+      documents: documents.map(doc => ({
+        filename: doc.filename,
+        displayName: doc.displayName,
+        uploadedAt: doc.uploadedAt,
+        sizeBytes: doc.sizeBytes
+      }))
     })
 
   } catch (error) {
-    console.error('Document processing error:', error)
+    console.error('Document initialization error:', error)
 
     return NextResponse.json(
-      { error: 'Failed to process documents' },
+      { error: 'Failed to initialize documents' },
       { status: 500 }
     )
   }
@@ -689,34 +633,103 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const query = searchParams.get('query')
+    const documentManager = new WKRDocumentManager(process.env.GOOGLE_AI_API_KEY!)
+    const status = await documentManager.validateDocumentAccess()
 
-    if (!query) {
+    if (!status) {
       return NextResponse.json(
-        { error: 'Query parameter required' },
-        { status: 400 }
+        { error: 'Documents not accessible' },
+        { status: 503 }
       )
     }
 
-    const knowledgeBase = new WKRKnowledgeBase()
-    await knowledgeBase.initialize()
-
-    const results = knowledgeBase.searchDocuments(query, 10)
+    const documents = await documentManager.getDocumentInfo()
 
     return NextResponse.json({
       success: true,
-      query,
-      results: results.map(chunk => ({
-        section: chunk.section,
-        content: chunk.content.substring(0, 500),
-        relevance: chunk.relevanceScore
-      }))
+      status: 'available',
+      documents
     })
 
   } catch (error) {
     return NextResponse.json(
-      { error: 'Search failed' },
+      { error: 'Document status check failed' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const documentManager = new WKRDocumentManager(process.env.GOOGLE_AI_API_KEY!)
+    await documentManager.refreshDocuments()
+
+    return NextResponse.json({
+      success: true,
+      message: 'Documents refreshed successfully'
+    })
+
+  } catch (error) {
+    console.error('Document refresh error:', error)
+
+    return NextResponse.json(
+      { error: 'Failed to refresh documents' },
+      { status: 500 }
+    )
+  }
+}
+```
+
+### Enhanced Analysis Endpoint
+```typescript
+// src/app/api/analyze/with-documents/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { DocumentEnhancedAnalysis } from '@/lib/analysis/document-enhanced-analysis'
+
+export async function POST(request: NextRequest) {
+  try {
+    const { transactions, analysisType = 'standard' } = await request.json()
+
+    if (!transactions || !Array.isArray(transactions)) {
+      return NextResponse.json(
+        { error: 'Invalid transactions data' },
+        { status: 400 }
+      )
+    }
+
+    // Initialize document-enhanced analysis
+    const analysis = new DocumentEnhancedAnalysis(process.env.GOOGLE_AI_API_KEY!)
+    await analysis.initialize()
+
+    // Perform analysis with document context
+    const result = await analysis.performAnalysisWithDocuments(
+      transactions,
+      analysisType
+    )
+
+    // Get document status for metadata
+    const documentStatus = await analysis.getDocumentStatus()
+
+    return NextResponse.json({
+      success: true,
+      analysis: result,
+      metadata: {
+        analysisType,
+        processedTransactions: transactions.length,
+        documentsUsed: documentStatus.documentsAvailable,
+        documentLastUpdate: documentStatus.lastUpdate,
+        timestamp: new Date().toISOString()
+      }
+    })
+
+  } catch (error) {
+    console.error('Document-enhanced analysis error:', error)
+
+    return NextResponse.json(
+      {
+        error: 'Analysis failed',
+        details: error.message
+      },
       { status: 500 }
     )
   }
@@ -727,45 +740,138 @@ export async function GET(request: NextRequest) {
 
 ### Unit Tests
 ```typescript
-// src/lib/documents/__tests__/pdf-processor.test.ts
-import { PDFProcessor } from '../pdf-processor'
-import fs from 'fs/promises'
+// src/lib/documents/__tests__/file-manager.test.ts
+import { WKRDocumentManager } from '../file-manager'
+import { GoogleAIFileManager } from '@google/generative-ai/server'
 
-describe('PDFProcessor', () => {
-  let processor: PDFProcessor
+// Mock the Google AI File Manager
+jest.mock('@google/generative-ai/server')
+
+describe('WKRDocumentManager', () => {
+  let documentManager: WKRDocumentManager
+  let mockFileManager: jest.Mocked<GoogleAIFileManager>
 
   beforeEach(() => {
-    processor = new PDFProcessor()
+    mockFileManager = {
+      uploadFile: jest.fn(),
+      getFile: jest.fn(),
+      deleteFile: jest.fn()
+    } as any
+
+    ;(GoogleAIFileManager as jest.Mock).mockImplementation(() => mockFileManager)
+
+    documentManager = new WKRDocumentManager('test-api-key')
   })
 
-  test('should process PDF documents', async () => {
-    // Mock PDF file
-    const mockPDFContent = Buffer.from('Mock PDF content')
-    jest.spyOn(fs, 'readFile').mockResolvedValue(mockPDFContent)
+  test('should upload documents successfully', async () => {
+    // Mock successful file upload
+    mockFileManager.uploadFile.mockResolvedValue({
+      file: {
+        uri: 'files/test123',
+        name: 'wkr1.pdf'
+      }
+    })
 
-    // Mock pdf-parse
-    jest.mock('pdf-parse', () => ({
-      __esModule: true,
-      default: jest.fn().mockResolvedValue({
-        text: 'Sample WKR document content about werkkostenregeling',
-        numpages: 10,
-        info: { Title: 'WKR Handleiding' }
-      })
-    }))
+    // Mock file system
+    const mockStats = { size: 1024000, mtime: new Date() }
+    jest.spyOn(require('fs/promises'), 'access').mockResolvedValue(undefined)
+    jest.spyOn(require('fs/promises'), 'stat').mockResolvedValue(mockStats)
 
-    const result = await processor.processWKRDocuments()
+    const documents = await documentManager.initializeDocuments()
 
-    expect(result).toHaveLength(2)
-    expect(result[0].filename).toBe('wkr1.pdf')
-    expect(result[0].content).toContain('werkkostenregeling')
+    expect(documents).toHaveLength(2)
+    expect(documents[0].fileUri).toBe('files/test123')
+    expect(mockFileManager.uploadFile).toHaveBeenCalledTimes(2)
   })
 
-  test('should handle processing errors gracefully', async () => {
-    jest.spyOn(fs, 'readFile').mockRejectedValue(new Error('File not found'))
+  test('should use cached documents when available', async () => {
+    // Mock cache file
+    const cachedData = {
+      documents: [{
+        filename: 'wkr1.pdf',
+        fileUri: 'files/cached123',
+        uploadedAt: new Date(),
+        displayName: 'Cached WKR Doc',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024
+      }],
+      lastUpdated: new Date(),
+      version: '1.0.0'
+    }
 
-    await expect(processor.processWKRDocuments())
+    jest.spyOn(require('fs/promises'), 'readFile')
+      .mockResolvedValue(JSON.stringify(cachedData))
+
+    const documents = await documentManager.initializeDocuments()
+
+    expect(documents).toHaveLength(1)
+    expect(documents[0].fileUri).toBe('files/cached123')
+    expect(mockFileManager.uploadFile).not.toHaveBeenCalled()
+  })
+
+  test('should handle upload failures gracefully', async () => {
+    mockFileManager.uploadFile.mockRejectedValue(new Error('Upload failed'))
+
+    jest.spyOn(require('fs/promises'), 'access').mockResolvedValue(undefined)
+    jest.spyOn(require('fs/promises'), 'stat').mockResolvedValue({ size: 1024 })
+
+    await expect(documentManager.initializeDocuments())
       .rejects
-      .toThrow('Failed to process WKR documents')
+      .toThrow('Document initialization failed')
+  })
+
+  test('should validate document access', async () => {
+    // Mock successful validation
+    mockFileManager.getFile.mockResolvedValue({ name: 'wkr1.pdf' })
+
+    // Mock cached documents
+    jest.spyOn(documentManager as any, 'loadCache').mockResolvedValue({
+      documents: [{
+        fileUri: 'files/test123',
+        filename: 'wkr1.pdf'
+      }]
+    })
+
+    const isValid = await documentManager.validateDocumentAccess()
+    expect(isValid).toBe(true)
+  })
+})
+```
+
+### Integration Tests
+```typescript
+// src/lib/documents/__tests__/document-enhanced-analysis.test.ts
+import { DocumentEnhancedAnalysis } from '../document-enhanced-analysis'
+
+describe('DocumentEnhancedAnalysis', () => {
+  let analysis: DocumentEnhancedAnalysis
+
+  beforeEach(() => {
+    analysis = new DocumentEnhancedAnalysis('test-api-key')
+  })
+
+  test('should perform analysis with document context', async () => {
+    const mockTransactions = [
+      {
+        grootboek: '440000 Huur',
+        boeking: '108308 Kantoorhuur',
+        bedrag: 2000,
+        datum: '2023-01-01',
+        accountId: '440000',
+        transactionId: '108308'
+      }
+    ]
+
+    // Mock the document-enhanced analysis
+    jest.spyOn(analysis as any, 'geminiWithDocs').mockImplementation({
+      initialize: jest.fn(),
+      generateAnalysisWithDocuments: jest.fn().mockResolvedValue('Mock analysis result')
+    })
+
+    await analysis.initialize()
+    const result = await analysis.performAnalysisWithDocuments(mockTransactions)
+
+    expect(result).toBe('Mock analysis result')
   })
 })
 ```
@@ -776,25 +882,27 @@ describe('PDFProcessor', () => {
 ```json
 {
   "dependencies": {
-    "pdf-parse": "^1.1.1",
-    "tesseract.js": "^5.0.0"
+    "@google/generative-ai": "^0.15.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0"
   }
 }
 ```
 
 ## Definition of Done
-- [ ] PDF processing pipeline werkend
-- [ ] Knowledge base geïndexeerd
-- [ ] Context integratie met prompts
-- [ ] Error handling voor document failures
-- [ ] Search functionaliteit operationeel
-- [ ] Caching van verwerkte documenten
-- [ ] Unit tests coverage >85%
-- [ ] Performance test met echte PDF bestanden
+- [ ] Google AI File Manager integratie werkend
+- [ ] Eenmalige document upload met caching
+- [ ] File ID hergebruik in alle requests
+- [ ] Document-enhanced analysis pipeline
+- [ ] Error handling voor file operations
+- [ ] API endpoints voor document management
+- [ ] Unit tests coverage >90%
+- [ ] Integration tests met mock File API
 
 ## Performance Targets
-- PDF processing: <10 seconden per document
-- Knowledge base initialization: <5 seconden
-- Context search: <500ms
-- Memory usage: <200MB voor beide PDFs
-- Cache hit ratio: >80% na eerste load
+- Document upload: Eenmalig, <30 seconden voor beide PDFs
+- Cache validation: <1 seconde
+- Document-enhanced analysis: <10 seconden extra vs normale analyse
+- File API calls: <500ms per request
+- Cache hit ratio: >95% na initiële upload
