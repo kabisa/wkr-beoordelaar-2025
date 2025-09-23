@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai'
+import { GoogleGenerativeAI, GenerativeModel, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
 import { GeminiError, RetryableGeminiError, createGeminiError } from './gemini-errors'
 
 export interface GeminiConfig {
@@ -48,20 +48,20 @@ export class GeminiClient {
       },
       safetySettings: [
         {
-          category: 'HARM_CATEGORY_HARASSMENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
         },
         {
-          category: 'HARM_CATEGORY_HATE_SPEECH',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
         },
         {
-          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
         },
         {
-          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
         },
       ]
     })
@@ -160,7 +160,7 @@ export class RetryableGeminiClient extends GeminiClient {
   }
 
   async generateAnalysisWithRetry(prompt: string): Promise<AnalysisResult> {
-    let lastError: Error
+    let lastError: Error = new Error('Unknown error')
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
@@ -189,7 +189,7 @@ export class RetryableGeminiClient extends GeminiClient {
   }
 
   async generateStreamingAnalysisWithRetry(prompt: string): Promise<AsyncIterable<string>> {
-    let lastError: Error
+    let lastError: Error = new Error('Unknown error')
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {

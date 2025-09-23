@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
 
     // Rate limiting (use IP as identifier)
     const rateLimiter = GlobalRateLimiter.getInstance()
-    const clientIP = request.ip || 'unknown'
+    const clientIP = request.headers.get('x-forwarded-for') ||
+                     request.headers.get('x-real-ip') ||
+                     'unknown'
 
     const canProceed = await rateLimiter.recordRequest(clientIP)
     if (!canProceed) {
