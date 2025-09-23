@@ -17,8 +17,13 @@ export function handleParsingError(error: unknown, context?: any): XAFParseError
   if (error instanceof Error) {
     // Handle specific error patterns
     if (error.message.includes('XML')) {
+      console.error('XML Parsing Error Details:', {
+        message: error.message,
+        stack: error.stack,
+        context
+      })
       return new XAFParseError(
-        'Ongeldig XML bestand. Controleer of het bestand niet beschadigd is.',
+        `Ongeldig XML bestand: ${error.message}`,
         'INVALID_XML',
         error,
         context

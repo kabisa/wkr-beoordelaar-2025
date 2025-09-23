@@ -195,9 +195,22 @@ export class XAFValidationError extends Error {
 export interface RawXAFStructure {
   auditfile: {
     header: any
-    company: any
+    company: any & {
+      generalLedger?: {
+        ledgerAccount: any | any[]
+      }
+      transactions?: {
+        linesCount?: string
+        totalDebit?: string
+        totalCredit?: string
+        journal: any | any[]
+      }
+    }
     generalLedgerAccounts?: {
       generalLedgerAccount: any | any[]
+    }
+    generalLedger?: {
+      ledgerAccount: any | any[]
     }
     customers?: {
       customer: any | any[]

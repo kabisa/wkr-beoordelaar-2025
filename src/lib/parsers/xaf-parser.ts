@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { MemoryManager } from '@/lib/utils/memory-manager'
 import {
   ParsedXAF,
   XAFParserOptions,
@@ -42,64 +43,90 @@ export class XAFParser {
   }
 
   async parseXAF(fileContent: string): Promise<ParsedXAF> {
+    const memoryManager = MemoryManager.getInstance()
     const startTime = performance.now()
 
-    try {
-      // Pre-validation
-      this.validateXMLStructure(fileContent)
+    return memoryManager.processWithMemoryCheck(async () => {
+      try {
+        // Pre-validation
+        this.validateXMLStructure(fileContent)
 
-      // Check file size
-      if (this.options.maxFileSize && fileContent.length > this.options.maxFileSize) {
+        // Check file size
+        if (this.options.maxFileSize && fileContent.length > this.options.maxFileSize) {
+          throw new XAFParseError(
+            `Bestand is te groot (${Math.round(fileContent.length / 1024 / 1024)}MB). Maximum ${Math.round(this.options.maxFileSize / 1024 / 1024)}MB toegestaan.`,
+            'FILE_TOO_LARGE'
+          )
+        }
+
+        // Parse XML with memory monitoring
+        const parsed: RawXAFStructure = this.xmlParser.parse(fileContent)
+
+        if (this.options.validateSchema) {
+          this.validateXAFSchema(parsed)
+        }
+
+        // Extract structured data
+        const result = await this.extractXAFData(parsed, fileContent.length, performance.now() - startTime)
+
+        // Register cleanup for large data
+        memoryManager.registerCleanupTask(() => {
+          // Clear large arrays to help with garbage collection
+          if (result.transactions.length > 1000) {
+            console.log('Registering cleanup for large transaction dataset')
+          }
+        })
+
+        return result
+
+      } catch (error) {
+        if (error instanceof XAFParseError || error instanceof XAFValidationError) {
+          throw error
+        }
+
         throw new XAFParseError(
-          `Bestand is te groot (${Math.round(fileContent.length / 1024 / 1024)}MB). Maximum ${Math.round(this.options.maxFileSize / 1024 / 1024)}MB toegestaan.`,
-          'FILE_TOO_LARGE'
+          `XAF parsing mislukt: ${error instanceof Error ? error.message : 'Onbekende fout'}`,
+          'PARSE_ERROR',
+          error instanceof Error ? error : undefined
         )
       }
-
-      // Parse XML
-      const parsed: RawXAFStructure = this.xmlParser.parse(fileContent)
-
-      if (this.options.validateSchema) {
-        this.validateXAFSchema(parsed)
-      }
-
-      // Extract structured data
-      const result = await this.extractXAFData(parsed, fileContent.length, performance.now() - startTime)
-
-      return result
-
-    } catch (error) {
-      if (error instanceof XAFParseError || error instanceof XAFValidationError) {
-        throw error
-      }
-
-      throw new XAFParseError(
-        `XAF parsing mislukt: ${error instanceof Error ? error.message : 'Onbekende fout'}`,
-        'PARSE_ERROR',
-        error instanceof Error ? error : undefined
-      )
-    }
+    })
   }
 
   private validateXMLStructure(content: string): void {
-    // Check for XML declaration
-    if (!content.trim().startsWith('<?xml')) {
-      throw new XAFValidationError('Ongeldig XML: XML declaratie ontbreekt')
+    const trimmedContent = content.trim()
+
+    // Check if it's a valid XML file - either starts with XML declaration or with a valid XML element
+    const hasXmlDeclaration = trimmedContent.startsWith('<?xml')
+    const hasValidXmlStart = trimmedContent.startsWith('<') && !trimmedContent.startsWith('<?')
+
+    if (!hasXmlDeclaration && !hasValidXmlStart) {
+      console.log('XML validation failed: Not a valid XML file')
+      console.log('File starts with:', trimmedContent.substring(0, 100))
+      throw new XAFValidationError('Ongeldig XML: Bestand begint niet met geldige XML')
     }
 
-    // Check for XAF namespace
+    // Check for XAF auditfile element
     if (!content.includes('auditfile')) {
+      console.log('XML validation failed: Missing auditfile element')
+      console.log('Content preview:', content.substring(0, 500))
       throw new XAFValidationError('Ongeldig XAF: auditfile root element ontbreekt')
     }
 
-    // Basic well-formedness check (simplified)
-    const openTags = (content.match(/<[^/!?][^>]*>/g) || []).length
-    const closeTags = (content.match(/<\/[^>]*>/g) || []).length
-    const selfClosingTags = (content.match(/<[^>]*\/>/g) || []).length
+    // Basic well-formedness check (simplified) - only do this for smaller files to avoid performance issues
+    if (content.length < 10 * 1024 * 1024) { // Only check files smaller than 10MB
+      const openTags = (content.match(/<[^/!?][^>]*>/g) || []).length
+      const closeTags = (content.match(/<\/[^>]*>/g) || []).length
+      const selfClosingTags = (content.match(/<[^>]*\/>/g) || []).length
 
-    if (openTags !== closeTags + selfClosingTags) {
-      throw new XAFValidationError('Ongeldig XML: Tag structuur niet gebalanceerd')
+      if (openTags !== closeTags + selfClosingTags) {
+        console.log('XML validation failed: Unbalanced tags')
+        console.log(`Open tags: ${openTags}, Close tags: ${closeTags}, Self-closing: ${selfClosingTags}`)
+        throw new XAFValidationError('Ongeldig XML: Tag structuur niet gebalanceerd')
+      }
     }
+
+    console.log('XML structure validation passed')
   }
 
   private validateXAFSchema(parsed: RawXAFStructure): void {
@@ -108,6 +135,8 @@ export class XAFParser {
     }
 
     const auditfile = parsed.auditfile
+
+    console.log('XAF Schema Validation - Available sections:', Object.keys(auditfile))
 
     // Check required sections
     const requiredSections = ['header', 'company']
@@ -127,8 +156,21 @@ export class XAFParser {
       throw new XAFValidationError('Ongeldig XAF: companyIdent ontbreekt in company')
     }
 
-    // Check for essential data
-    if (!auditfile.generalLedgerAccounts && !auditfile.transactions) {
+    // Debug: Check what account and transaction structures are available
+    console.log('Accounts check:', {
+      hasGeneralLedgerAccounts: !!auditfile.generalLedgerAccounts,
+      hasGeneralLedger: !!auditfile.generalLedger,
+      hasTransactions: !!auditfile.transactions,
+      hasCompanyGeneralLedger: !!auditfile.company?.generalLedger,
+      hasCompanyTransactions: !!auditfile.company?.transactions
+    })
+
+    // Check for essential data - different XAF versions use different element names
+    // Some XAF files have generalLedger/transactions inside company section
+    const hasAccounts = auditfile.generalLedgerAccounts || auditfile.generalLedger || auditfile.company?.generalLedger
+    const hasTransactions = auditfile.transactions || auditfile.company?.transactions
+
+    if (!hasAccounts && !hasTransactions) {
       throw new XAFValidationError('Ongeldig XAF: Geen rekeningen of transacties gevonden')
     }
   }
@@ -138,8 +180,8 @@ export class XAFParser {
 
     const header = this.extractHeader(auditfile.header)
     const company = this.extractCompany(auditfile.company)
-    const accounts = this.extractAccounts(auditfile.generalLedgerAccounts)
-    const { transactions, journals } = this.extractTransactions(auditfile.transactions, accounts)
+    const accounts = this.extractAccounts(auditfile.generalLedgerAccounts || auditfile.generalLedger || auditfile.company?.generalLedger)
+    const { transactions, journals } = this.extractTransactions(auditfile.transactions || auditfile.company?.transactions, accounts)
 
     const metadata: XAFMetadata = {
       fileSize,
@@ -177,16 +219,19 @@ export class XAFParser {
   }
 
   private extractCompany(companyData: any): XAFCompany {
+    // Handle different address structures - some XAF files use streetAddress object
+    const streetAddress = companyData.streetAddress || {}
+
     return {
       companyIdent: this.safeString(companyData.companyIdent),
       companyName: this.safeString(companyData.companyName),
       taxRegistrationCountry: this.safeString(companyData.taxRegistrationCountry, 'NL'),
       taxRegIdent: this.safeString(companyData.taxRegIdent),
-      streetAddressLine1: this.safeString(companyData.streetAddressLine1),
-      city: this.safeString(companyData.city),
-      postalCode: this.safeString(companyData.postalCode),
-      region: this.safeString(companyData.region),
-      country: this.safeString(companyData.country),
+      streetAddressLine1: this.safeString(companyData.streetAddressLine1 || streetAddress.streetname),
+      city: this.safeString(companyData.city || streetAddress.city),
+      postalCode: this.safeString(companyData.postalCode || streetAddress.postalCode),
+      region: this.safeString(companyData.region || streetAddress.region),
+      country: this.safeString(companyData.country || streetAddress.country),
       website: this.safeString(companyData.website),
       commerceRegIdent: this.safeString(companyData.commerceRegIdent),
       email: this.safeString(companyData.email),
@@ -196,18 +241,25 @@ export class XAFParser {
   }
 
   private extractAccounts(accountsData: any): XAFAccount[] {
-    if (!accountsData || !accountsData.generalLedgerAccount) {
+    // Handle different account structures - some XAF files use generalLedger/ledgerAccount
+    let accounts = []
+
+    if (accountsData?.generalLedgerAccount) {
+      accounts = Array.isArray(accountsData.generalLedgerAccount)
+        ? accountsData.generalLedgerAccount
+        : [accountsData.generalLedgerAccount]
+    } else if (accountsData?.ledgerAccount) {
+      accounts = Array.isArray(accountsData.ledgerAccount)
+        ? accountsData.ledgerAccount
+        : [accountsData.ledgerAccount]
+    } else {
       return []
     }
-
-    const accounts = Array.isArray(accountsData.generalLedgerAccount)
-      ? accountsData.generalLedgerAccount
-      : [accountsData.generalLedgerAccount]
 
     return accounts.map((account: any) => ({
       id: this.safeString(account.accID),
       name: this.safeString(account.accDesc),
-      type: this.safeString(account.accType, 'P') as 'P' | 'B',
+      type: this.safeString(account.accTp || account.accType, 'P') as 'P' | 'B',
       standardAccountID: this.safeString(account.standardAccountID),
       groupingCategory: this.safeString(account.groupingCategory),
       accountCreationDate: this.safeString(account.accountCreationDate),

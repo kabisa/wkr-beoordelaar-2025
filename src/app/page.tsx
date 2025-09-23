@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { FileUpload } from '@/components/upload/FileUpload'
 import { ParseResults } from '@/components/results/ParseResults'
+import { ErrorBoundary } from '@/components/error/ErrorBoundary'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function Home() {
@@ -34,18 +35,22 @@ export default function Home() {
             Automatische analyse van XAF bestanden voor Nederlandse Werkkostenregeling
           </p>
 
-          <FileUpload
-            onFileSelect={handleFileSelect}
-            onFileRemove={handleFileRemove}
-            onUploadComplete={handleUploadComplete}
-          />
+          <ErrorBoundary>
+            <FileUpload
+              onFileSelect={handleFileSelect}
+              onFileRemove={handleFileRemove}
+              onUploadComplete={handleUploadComplete}
+            />
 
-          {/* Upload Result Display */}
-          {uploadResult && (
-            <div className="mt-8 max-w-6xl mx-auto">
-              <ParseResults result={uploadResult} />
-            </div>
-          )}
+            {/* Upload Result Display */}
+            {uploadResult && (
+              <div className="mt-8 max-w-6xl mx-auto">
+                <ErrorBoundary>
+                  <ParseResults result={uploadResult} />
+                </ErrorBoundary>
+              </div>
+            )}
+          </ErrorBoundary>
 
           <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">

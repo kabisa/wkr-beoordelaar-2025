@@ -82,12 +82,20 @@ export async function POST(request: NextRequest) {
           xafVersion: parsedData.metadata.xafVersion,
           parserUsed: parser instanceof MemoryOptimizedXAFParser ? 'optimized' : 'standard'
         },
-        // Include sample data for preview
-        sampleAccounts: parsedData.accounts.slice(0, 10),
-        sampleTransactions: parsedData.transactions.slice(0, 5).map(transaction => ({
+        // Include sample data for preview - limit size for large datasets
+        sampleAccounts: parsedData.accounts.slice(0, Math.min(10, parsedData.accounts.length)),
+        sampleTransactions: parsedData.transactions.slice(0, Math.min(5, parsedData.transactions.length)).map(transaction => ({
           ...transaction,
           lines: transaction.lines.slice(0, 3) // Limit lines for response size
-        }))
+        })),
+        // Add pagination info for large datasets
+        pagination: {
+          totalAccounts: parsedData.accounts.length,
+          totalTransactions: parsedData.transactions.length,
+          accountsShowing: Math.min(10, parsedData.accounts.length),
+          transactionsShowing: Math.min(5, parsedData.transactions.length),
+          hasMoreData: parsedData.accounts.length > 10 || parsedData.transactions.length > 5
+        }
       },
       stats: {
         processingStats: stats.getStats(),
