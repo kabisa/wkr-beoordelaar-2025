@@ -365,7 +365,7 @@ export default function AIAnalysisPanel({ transactions = [], onAnalysisComplete 
         {/* Prompt Debugger */}
         <PromptDebugger
           promptDetails={result?.metadata?.promptDetails}
-          isVisible={showPromptDebugger && result?.metadata?.promptDetails}
+          isVisible={showPromptDebugger && !!result?.metadata?.promptDetails}
         />
       </CardContent>
     </Card>

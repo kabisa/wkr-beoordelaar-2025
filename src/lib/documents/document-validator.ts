@@ -120,12 +120,12 @@ export class DocumentValidator {
       }
 
     } catch (error) {
-      console.error(`❌ ${filename}: Validation failed -`, error.message)
+      console.error(`❌ ${filename}: Validation failed -`, error instanceof Error ? error.message : 'Unknown error')
 
       return {
         filename,
         isValid: false,
-        errors: [`Failed to access document: ${error.message}`]
+        errors: [`Failed to access document: ${error instanceof Error ? error.message : 'Unknown error'}`]
       }
     }
   }
@@ -195,7 +195,7 @@ export class DocumentValidator {
       return {
         isValid: false,
         documentsCount: 0,
-        errors: [`Validation failed: ${error.message}`]
+        errors: [`Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`]
       }
     }
   }
@@ -210,7 +210,11 @@ export class DocumentValidator {
   }> {
     console.log('🔍 Validating document content accessibility...')
 
-    const checks = [
+    const checks: Array<{
+      check: string
+      passed: boolean
+      details?: string
+    }> = [
       { check: 'Documents initialized', passed: false },
       { check: 'Document access working', passed: false },
       { check: 'Cache file readable', passed: false },
@@ -267,7 +271,7 @@ export class DocumentValidator {
         contentChecks: checks.map(check => ({
           ...check,
           passed: false,
-          details: `Failed: ${error.message}`
+          details: `Failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         }))
       }
     }

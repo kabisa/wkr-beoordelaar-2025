@@ -28,8 +28,8 @@ export interface DocumentEnhancedResult {
 export class GeminiWithDocuments {
   private genAI: GoogleGenerativeAI
   private documentManager: WKRDocumentManager
-  private model: GenerativeModel
-  private modelName: string
+  private model!: GenerativeModel
+  private modelName!: string
   private isInitialized = false
 
   constructor(apiKey: string) {
@@ -165,9 +165,9 @@ Geef een gestructureerde markdown analyse met:
       `)
       console.log('-------------------------------------')
       content.forEach((item, index) => {
-        if (item.fileData) {
+        if ('fileData' in item) {
           console.log(`Content ${index}: [DOCUMENT] ${item.fileData.fileUri} (${item.fileData.mimeType})`)
-        } else if (item.text) {
+        } else if ('text' in item) {
           console.log(`Content ${index}: [TEXT]`)
           console.log(item.text)
         }
@@ -197,7 +197,7 @@ Geef een gestructureerde markdown analyse met:
     } catch (error) {
       console.error('❌ Document-enhanced analysis failed:', error)
       throw new GeminiError(
-        `Analysis with documents failed: ${error.message}`,
+        `Analysis with documents failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'ANALYSIS_ERROR',
         error
       )
@@ -270,9 +270,9 @@ Geef een gestructureerde markdown analyse met:
       `)
       console.log('-------------------------------------')
       content.forEach((item, index) => {
-        if (item.fileData) {
+        if ('fileData' in item) {
           console.log(`Content ${index}: [DOCUMENT] ${item.fileData.fileUri} (${item.fileData.mimeType})`)
-        } else if (item.text) {
+        } else if ('text' in item) {
           console.log(`Content ${index}: [TEXT]`)
           console.log(item.text)
         }
@@ -294,7 +294,7 @@ Geef een gestructureerde markdown analyse met:
           } catch (error) {
             console.error('❌ Streaming error:', error)
             throw new GeminiError(
-              `Streaming analysis failed: ${error.message}`,
+              `Streaming analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
               'STREAMING_ERROR',
               error
             )
@@ -305,7 +305,7 @@ Geef een gestructureerde markdown analyse met:
     } catch (error) {
       console.error('❌ Streaming analysis with documents failed:', error)
       throw new GeminiError(
-        `Streaming analysis failed: ${error.message}`,
+        `Streaming analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'STREAMING_ERROR',
         error
       )

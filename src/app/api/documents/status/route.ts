@@ -29,7 +29,14 @@ export async function GET(request: NextRequest) {
       errors: ['No documents uploaded yet']
     }
 
-    let contentValidation = {
+    let contentValidation: {
+      isValid: boolean
+      contentChecks: Array<{
+        check: string
+        passed: boolean
+        details?: string
+      }>
+    } = {
       isValid: false,
       contentChecks: []
     }
@@ -76,7 +83,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Fout bij ophalen document status',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )
@@ -165,7 +172,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Fout bij uitvoeren document actie',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )
