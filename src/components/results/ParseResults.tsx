@@ -23,6 +23,8 @@ import {
   BarChart3
 } from 'lucide-react'
 
+import AIAnalysisPanel from '../ai/AIAnalysisPanel'
+
 interface ParseResultsProps {
   result: {
     success: boolean
@@ -549,6 +551,16 @@ export function ParseResults({ result }: ParseResultsProps) {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* AI Analysis Panel - Only show after successful WKR filtering */}
+      {filterResult && filterResult.filtered && filterResult.filtered.length > 0 && (
+        <AIAnalysisPanel
+          transactions={filterResult.filtered}
+          onAnalysisComplete={(analysis, metadata) => {
+            console.log('AI Analysis completed:', { analysis, metadata })
+          }}
+        />
       )}
     </div>
   )

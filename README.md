@@ -35,13 +35,29 @@ npm install
 
 3. **Configureer environment variables**
 
-Maak een `.env.local` bestand in de root directory:
+Kopieer het voorbeeld configuratie bestand:
 ```bash
-GOOGLE_AI_API_KEY=your_gemini_api_key_here
+cp .env.example .env.local
+```
+
+En pas de volgende verplichte waarden aan in `.env.local`:
+```bash
+# Verplicht: Je Google Gemini API key
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optioneel: Pas configuratie aan (defaults zijn al ingesteld)
 GEMINI_MODEL=gemini-2.5-pro
 GEMINI_TEMPERATURE=0.1
-NODE_ENV=development
+GEMINI_MAX_OUTPUT_TOKENS=4096
 ```
+
+**📋 Volledige configuratie opties** (zie `.env.example` voor alle beschikbare opties):
+- `GEMINI_API_KEY` - **Verplicht**: Google Gemini API sleutel
+- `GEMINI_MODEL` - AI model (default: gemini-2.5-pro)
+- `GEMINI_TEMPERATURE` - Creativiteit (0.0-2.0, default: 0.1)
+- `GEMINI_MAX_OUTPUT_TOKENS` - Max response tokens (default: 4096)
+- `GEMINI_MAX_REQUESTS_PER_MINUTE` - Rate limiting (default: 60)
+- `ENABLE_PERFORMANCE_MONITORING` - Performance tracking (default: true)
 
 ### Google Gemini API Key verkrijgen
 
@@ -75,13 +91,39 @@ De applicatie accepteert Nederlandse XAF (XML Audit Files) bestanden tot 100MB. 
 
 ## 🧠 AI Analyse
 
-De applicatie gebruikt Google Gemini 2.5 Pro om te bepalen:
+De applicatie gebruikt Google Gemini 2.5 Pro om WKR-gefilterde transacties te analyseren met 4 verschillende analyse types:
 
-1. **WKR Relevantie**: Valt de uitgave onder de werkkostenregeling?
-2. **Confidence Score**: Hoe zeker is de AI over deze classificatie?
-3. **Vrijstellingen**: Is er een gerichte vrijstelling van toepassing?
-4. **Vrije Ruimte**: Berekening van beschikbare ruimte o.b.v. loonkosten
-5. **Gebruik**: Hoeveel van de vrije ruimte wordt gebruikt?
+### 📊 Analyse Types
+
+1. **🎯 WKR Compliance Analyse**
+   - Identificeert WKR-relevante transacties
+   - Controleert naleving van de Werkkostenregeling
+   - Geeft risico-categorieën (Hoog/Gemiddeld/Laag)
+   - Concrete aanbevelingen voor compliance verbetering
+
+2. **⚠️ Risico Analyse**
+   - Financiële risico's en ongebruikelijke patronen
+   - Compliance risico's voor overheidsregeling
+   - Operationele risico's en procesfouten
+   - Prioritering naar impact en waarschijnlijkheid
+
+3. **🔍 Patroon Analyse**
+   - Frequentie en timing patronen
+   - Ongebruikelijke bedragen en herhalingen
+   - Account combinaties en anomalieën
+   - Seizoens trends en uitschieters
+
+4. **✨ Aangepaste Analyse**
+   - Gebruik je eigen prompts voor specifieke vragen
+   - Flexibele analyse voor unieke use cases
+   - Gerichte inzichten op maat
+
+### 🚀 Features
+
+- **Real-time Streaming**: Live analyse output tijdens verwerking
+- **Performance Monitoring**: Token usage en response times
+- **Rate Limiting**: 60 requests per minuut voor stabiele performance
+- **Error Handling**: Uitgebreide error recovery met retry logic
 
 ## 🛠️ Development Commands
 
@@ -98,12 +140,52 @@ npm run test:watch   # Tests in watch mode
 npm run test:coverage # Coverage report
 ```
 
+## 🔧 API Endpoints
+
+De applicatie biedt verschillende API endpoints voor AI functionaliteit:
+
+### Core Endpoints
+- `POST /api/parse` - Upload en parseer XAF bestanden
+- `GET /api/parse/[sessionId]` - Ophalen van volledige transactiedata
+- `POST /api/ai/analyze` - Standaard AI analyse van transacties
+- `POST /api/ai/stream` - Streaming AI analyse voor real-time output
+- `GET /api/ai/stats` - Performance statistieken en monitoring
+
+### AI Analysis Request Format
+```json
+{
+  "transactions": [...],        // Array van WKR-gefilterde transacties
+  "analysisType": "wkr-compliance", // "risk-assessment", "pattern-analysis", "custom"
+  "prompt": "..."              // Alleen voor custom analyse type
+}
+```
+
+### Response Format
+```json
+{
+  "success": true,
+  "data": {
+    "analysis": "AI analyse resultaat...",
+    "metadata": {
+      "tokensUsed": 1250,
+      "responseTime": 3400,
+      "model": "gemini-2.5-pro",
+      "analysisType": "wkr-compliance",
+      "transactionCount": 2740
+    }
+  }
+}
+```
+
 ## 📊 Performance
 
 - **Upload verwerking**: < 5 seconden voor 50MB bestanden
-- **AI analyse start**: < 2 seconden
-- **Complete analyse**: < 30 seconden voor standaard XAF
-- **Memory usage**: Max 2x bestandsgrootte
+- **WKR filtering**: < 3 seconden voor 10k+ transacties
+- **AI analyse start**: < 2 seconden (met rate limiting)
+- **Complete AI analyse**: 15-45 seconden afhankelijk van complexity
+- **Streaming analyse**: Real-time chunks elke 1-2 seconden
+- **Memory usage**: Max 2x bestandsgrootte tijdens parsing
+- **Rate limiting**: 60 AI requests per minuut per gebruiker
 
 ## 🔒 Privacy & Beveiliging
 
