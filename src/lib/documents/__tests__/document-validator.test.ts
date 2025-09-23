@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import { DocumentValidator } from '../document-validator'
 import fs from 'fs/promises'
@@ -15,7 +16,7 @@ describe('DocumentValidator', () => {
   describe('validateLocalDocuments', () => {
     test('should validate existing documents successfully', async () => {
       // Mock successful file access
-      mockFs.stat = jest.fn().mockImplementation((filePath: string) => {
+      ;(mockFs.stat as any) = jest.fn().mockImplementation(async (filePath: string) => {
         const filename = path.basename(filePath as string)
         return Promise.resolve({
           isFile: () => true,
@@ -39,7 +40,7 @@ describe('DocumentValidator', () => {
 
     test('should detect missing files', async () => {
       // Mock file not found
-      mockFs.stat = jest.fn().mockRejectedValue(new Error('ENOENT: no such file or directory'))
+      ;(mockFs.stat as any) = jest.fn().mockRejectedValue(new Error('ENOENT: no such file or directory'))
 
       const result = await DocumentValidator.validateLocalDocuments()
 
@@ -55,7 +56,7 @@ describe('DocumentValidator', () => {
     })
 
     test('should detect empty files', async () => {
-      mockFs.stat = jest.fn().mockResolvedValue({
+      ;(mockFs.stat as any) = jest.fn().mockResolvedValue({
         isFile: () => true,
         size: 0,
         mtime: new Date()
@@ -71,7 +72,7 @@ describe('DocumentValidator', () => {
     })
 
     test('should detect files that are too large', async () => {
-      mockFs.stat = jest.fn().mockResolvedValue({
+      ;(mockFs.stat as any) = jest.fn().mockResolvedValue({
         isFile: () => true,
         size: 150 * 1024 * 1024, // 150MB
         mtime: new Date()
@@ -90,7 +91,7 @@ describe('DocumentValidator', () => {
       const oldDate = new Date()
       oldDate.setFullYear(oldDate.getFullYear() - 2) // 2 years ago
 
-      mockFs.stat = jest.fn().mockResolvedValue({
+      ;(mockFs.stat as any) = jest.fn().mockResolvedValue({
         isFile: () => true,
         size: 50000,
         mtime: oldDate
@@ -106,7 +107,7 @@ describe('DocumentValidator', () => {
     })
 
     test('should warn about very small files', async () => {
-      mockFs.stat = jest.fn().mockResolvedValue({
+      ;(mockFs.stat as any) = jest.fn().mockResolvedValue({
         isFile: () => true,
         size: 5000, // 5KB - very small
         mtime: new Date()
@@ -122,7 +123,7 @@ describe('DocumentValidator', () => {
     })
 
     test('should handle directories instead of files', async () => {
-      mockFs.stat = jest.fn().mockResolvedValue({
+      ;(mockFs.stat as any) = jest.fn().mockResolvedValue({
         isFile: () => false, // It's a directory
         size: 4096,
         mtime: new Date()

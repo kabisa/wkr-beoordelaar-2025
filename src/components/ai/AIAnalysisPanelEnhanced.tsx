@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -43,7 +43,8 @@ export default function AIAnalysisPanelEnhanced({ transactions = [], onAnalysisC
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>('wkr-compliance')
   const [customPrompt, setCustomPrompt] = useState('')
   const [showPromptDebugger, setShowPromptDebugger] = useState(false)
-  const [useStreaming, setUseStreaming] = useState(true)
+  const [useStreaming] = useState(true) // Always true, option hidden
+  const [isDebugMode, setIsDebugMode] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
 
   const analysisTypes = [
@@ -62,13 +63,6 @@ export default function AIAnalysisPanelEnhanced({ transactions = [], onAnalysisC
       features: ['Vrije ruimte berekening', 'Kostenspecificatie', 'Actieplan']
     },
     {
-      id: 'risk-assessment',
-      title: 'Risico Analyse',
-      description: 'Identificeert financiële en compliance risico\'s',
-      icon: AlertCircle,
-      features: ['Risico scoring', 'Compliance gaps', 'Voorspellende analyse']
-    },
-    {
       id: 'custom',
       title: 'Aangepaste Analyse',
       description: 'Gebruik je eigen prompt voor specifieke vragen',
@@ -78,6 +72,14 @@ export default function AIAnalysisPanelEnhanced({ transactions = [], onAnalysisC
   ]
 
   const selectedType = analysisTypes.find(type => type.id === selectedAnalysis)
+
+  // Check for debug mode from URL parameter
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      setIsDebugMode(urlParams.get('debug') === 'true')
+    }
+  }, [])
 
   const handleAnalysisComplete = (analysis: string, metadata?: any) => {
     const finalResult: AnalysisResult = {
@@ -175,48 +177,30 @@ export default function AIAnalysisPanelEnhanced({ transactions = [], onAnalysisC
             </div>
           )}
 
-          {/* Settings */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Streaming Toggle */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-gray-600" />
-                <div>
-                  <Label htmlFor="streaming-mode" className="text-sm font-medium">
-                    Real-time Streaming
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Zie resultaten terwijl de AI analyseert
-                  </p>
+          {/* Settings - Only show debug toggle in debug mode */}
+          {isDebugMode && (
+            <div className="grid grid-cols-1 gap-4">
+              {/* Debug Toggle - Only visible with ?debug=true */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-gray-600" />
+                  <div>
+                    <Label htmlFor="debug-mode" className="text-sm font-medium">
+                      Debug Informatie
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Toon prompt details en metadata
+                    </p>
+                  </div>
                 </div>
+                <Switch
+                  id="debug-mode"
+                  checked={showPromptDebugger}
+                  onCheckedChange={setShowPromptDebugger}
+                />
               </div>
-              <Switch
-                id="streaming-mode"
-                checked={useStreaming}
-                onCheckedChange={setUseStreaming}
-              />
             </div>
-
-            {/* Debug Toggle */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-gray-600" />
-                <div>
-                  <Label htmlFor="debug-mode" className="text-sm font-medium">
-                    Debug Informatie
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Toon prompt details en metadata
-                  </p>
-                </div>
-              </div>
-              <Switch
-                id="debug-mode"
-                checked={showPromptDebugger}
-                onCheckedChange={setShowPromptDebugger}
-              />
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -237,11 +221,13 @@ export default function AIAnalysisPanelEnhanced({ transactions = [], onAnalysisC
         </Card>
       )}
 
-      {/* Prompt Debugger */}
-      <PromptDebugger
-        promptDetails={result?.metadata?.promptDetails}
-        isVisible={showPromptDebugger && !!result?.metadata?.promptDetails}
-      />
+      {/* Prompt Debugger - Only show in debug mode */}
+      {isDebugMode && (
+        <PromptDebugger
+          promptDetails={result?.metadata?.promptDetails}
+          isVisible={showPromptDebugger && !!result?.metadata?.promptDetails}
+        />
+      )}
     </div>
   )
 }

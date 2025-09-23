@@ -54,9 +54,22 @@ export function ParseResults({ result }: ParseResultsProps) {
   const [filterResult, setFilterResult] = useState<any>(null)
   const [isFiltering, setIsFiltering] = useState(false)
   const [filterError, setFilterError] = useState<string | null>(null)
-  const [showFilterDetails, setShowFilterDetails] = useState(false)
   const [fullData, setFullData] = useState<{ transactions: any[], accounts: any[] } | null>(null)
   const [isLoadingFullData, setIsLoadingFullData] = useState(false)
+
+  // Automatically start WKR filtering when component mounts
+  useEffect(() => {
+    const autoStartFiltering = async () => {
+      if (result.success && result.data && !filterResult && !isFiltering) {
+        // Small delay to let the UI render first
+        setTimeout(() => {
+          handleWKRFilter()
+        }, 500)
+      }
+    }
+
+    autoStartFiltering()
+  }, [result.success]) // Only run when result changes
 
   if (!result.success || !result.data) {
     return null
@@ -142,7 +155,6 @@ export function ParseResults({ result }: ParseResultsProps) {
 
       const filterData = await response.json()
       setFilterResult(filterData.data)
-      setShowFilterDetails(true)
 
     } catch (error) {
       setFilterError(error instanceof Error ? error.message : 'Onbekende fout bij filteren')
@@ -261,223 +273,45 @@ export function ParseResults({ result }: ParseResultsProps) {
         </Card>
       )}
 
-      {/* Sample Data Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sample Accounts */}
-        {sampleAccounts.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Voorbeeld Rekeningen</CardTitle>
-              <CardDescription>
-                Eerste {sampleAccounts.length} van {summary?.accounts} rekeningen
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {sampleAccounts.slice(0, 5).map((account: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div>
-                      <p className="font-medium text-sm">{account.id}</p>
-                      <p className="text-xs text-gray-600">{account.name}</p>
-                    </div>
-                    <Badge variant={account.type === 'P' ? 'default' : 'secondary'}>
-                      {account.type === 'P' ? 'W&V' : 'Balans'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Sample Transactions */}
-        {sampleTransactions.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Voorbeeld Transacties</CardTitle>
-              <CardDescription>
-                Eerste {sampleTransactions.length} van {summary?.transactions} transacties
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {sampleTransactions.slice(0, 3).map((transaction: any, index: number) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="font-medium text-sm">#{transaction.transactionNumber}</p>
-                        <p className="text-xs text-gray-600">{transaction.description}</p>
-                      </div>
-                      <Badge variant="outline">{transaction.date}</Badge>
-                    </div>
 
-                    {transaction.lines && transaction.lines.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {transaction.lines.slice(0, 2).map((line: any, lineIndex: number) => (
-                          <div key={lineIndex} className="flex justify-between text-xs">
-                            <span className="text-gray-600">{line.accountId} - {line.description}</span>
-                            <span className={`font-mono ${line.amountType === 'D' ? 'text-red-600' : 'text-green-600'}`}>
-                              {line.amountType === 'D' ? '-' : '+'} €{Math.abs(line.amount).toFixed(2)}
-                            </span>
-                          </div>
-                        ))}
-                        {transaction.lines.length > 2 && (
-                          <p className="text-xs text-gray-400">... en {transaction.lines.length - 2} meer regels</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Technical Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5" />
-            Technische informatie
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <h4 className="font-medium text-sm text-gray-600">Parser gebruikt</h4>
-              <p className="text-sm">{summary?.parserUsed === 'optimized' ? 'Geoptimaliseerd (groot bestand)' : 'Standaard'}</p>
+      {/* WKR Filtering Status - Hidden but show loading */}
+      {(isFiltering || isLoadingFullData) && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-center gap-3">
+              <LoadingSpinner size="sm" />
+              <span className="text-sm">
+                {isLoadingFullData ? 'Data laden...' : 'WKR filtering wordt uitgevoerd...'}
+              </span>
             </div>
-            <div>
-              <h4 className="font-medium text-sm text-gray-600">XAF versie</h4>
-              <p className="text-sm">{summary?.xafVersion || 'Onbekend'}</p>
-            </div>
-            <div>
-              <h4 className="font-medium text-sm text-gray-600">Sessie ID</h4>
-              <p className="text-xs font-mono text-gray-400">{data.sessionId}</p>
-            </div>
-          </div>
+          </CardContent>
+        </Card>
+      )}
 
-          {stats?.successRate !== undefined && (
-            <div className="mt-4">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-medium text-sm text-gray-600">Systeemprestaties</h4>
-                <span className="text-sm text-green-600">
-                  {stats.successRate.toFixed(1)}% success rate
-                </span>
-              </div>
-              <Progress value={stats.successRate} className="h-2" />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Filter Error */}
+      {filterError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Fout bij filteren: {filterError}
+          </AlertDescription>
+        </Alert>
+      )}
 
-      {/* WKR Filtering Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-blue-500" />
-            WKR Filtering (Story 4)
-          </CardTitle>
-          <CardDescription>
-            Filter transacties voor Nederlandse Werkkostenregeling analyse
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {/* Filter Controls */}
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleWKRFilter}
-                disabled={isFiltering || isLoadingFullData}
-                className="flex items-center gap-2"
-              >
-                {isFiltering || isLoadingFullData ? (
-                  <>
-                    <LoadingSpinner size="sm" />
-                    {isLoadingFullData ? 'Data laden...' : 'Filteren...'}
-                  </>
-                ) : (
-                  <>
-                    <Filter className="h-4 w-4" />
-                    Start WKR Filtering
-                  </>
-                )}
-              </Button>
-
-              {filterResult && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowFilterDetails(!showFilterDetails)}
-                  className="flex items-center gap-2"
-                >
-                  <Eye className="h-4 w-4" />
-                  {showFilterDetails ? 'Verberg Details' : 'Toon Details'}
-                </Button>
-              )}
-            </div>
-
-            {/* Filter Status */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                <span className="text-sm">XAF bestand succesvol geparseerd</span>
-                {fullDataAvailable && (
-                  <Badge variant="outline" className="text-xs">
-                    Grote dataset - {summary?.transactions?.toLocaleString()} transacties
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {filterResult ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Timer className="h-4 w-4 text-orange-500" />
-                )}
-                <span className="text-sm">
-                  {filterResult ? 'WKR filtering voltooid' : 'Klaar voor WKR filtering'}
-                </span>
-                {fullDataAvailable && !fullData && !fullTransactions && (
-                  <Badge variant="secondary" className="text-xs">
-                    Volledige data wordt geladen bij filtering
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Timer className="h-4 w-4 text-orange-500" />
-                <span className="text-sm">Klaar voor AI analyse (Story 5)</span>
-              </div>
-            </div>
-
-            {/* Filter Error */}
-            {filterError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Fout bij filteren: {filterError}
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filter Results */}
-      {filterResult && showFilterDetails && (
+      {/* Simplified Filter Results */}
+      {filterResult && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-green-500" />
               WKR Filter Resultaten
             </CardTitle>
-            <CardDescription>
-              Gefilterde transacties voor WKR analyse
-            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {/* Filter Statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-4">
+              {/* Essential Filter Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <p className="text-2xl font-bold text-blue-600">{filterResult.stats?.totalFiltered || 0}</p>
                   <p className="text-sm text-blue-700">Gefilterde regels</p>
@@ -486,67 +320,10 @@ export function ParseResults({ result }: ParseResultsProps) {
                   <p className="text-2xl font-bold text-green-600">{filterResult.stats?.filterRatio || '0'}%</p>
                   <p className="text-sm text-green-700">Filter ratio</p>
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-600">
-                    €{filterResult.stats?.totalAmount?.toLocaleString('nl-NL') || '0'}
-                  </p>
-                  <p className="text-sm text-purple-700">Totaal bedrag</p>
-                </div>
                 <div className="text-center p-4 bg-orange-50 rounded-lg">
                   <p className="text-2xl font-bold text-orange-600">{filterResult.stats?.processingTime || 0}ms</p>
                   <p className="text-sm text-orange-700">Verwerkingstijd</p>
                 </div>
-              </div>
-
-              {/* Filter Summary */}
-              {filterResult.summary && (
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h4 className="font-medium mb-2">Samenvatting</h4>
-                  <pre className="text-sm text-gray-700 whitespace-pre-wrap">{filterResult.summary}</pre>
-                </div>
-              )}
-
-              {/* Sample Filtered Data */}
-              {filterResult.filtered && filterResult.filtered.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-3">Voorbeeld gefilterde transacties</h4>
-                  <div className="space-y-2">
-                    {filterResult.filtered.slice(0, 5).map((item: any, index: number) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-white border rounded">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{item.grootboek}</p>
-                          <p className="text-xs text-gray-600">{item.boeking}</p>
-                          {item.filterReason && (
-                            <Badge variant="outline" className="mt-1 text-xs">
-                              {item.filterReason}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono text-sm">€{item.bedrag?.toFixed(2)}</p>
-                          <p className="text-xs text-gray-500">{item.datum}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {filterResult.filtered.length > 5 && (
-                      <p className="text-xs text-gray-400 text-center py-2">
-                        ... en {filterResult.filtered.length - 5} meer gefilterde transacties
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Download Options */}
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex items-center gap-2">
-                  <Download className="h-4 w-4" />
-                  Download CSV
-                </Button>
-                <Button variant="outline" size="sm" className="flex items-center gap-2">
-                  <Download className="h-4 w-4" />
-                  Download Excel
-                </Button>
               </div>
             </div>
           </CardContent>

@@ -80,7 +80,7 @@ export default function Home() {
                 </svg>
               </div>
               <h3 className="font-semibold text-lg mb-2">Rapportage</h3>
-              <p className="text-gray-600">Uitgebreide rapporten met visualisaties en aanbevelingen</p>
+              <p className="text-gray-600">Uitgebreide rapporten en aanbevelingen</p>
             </div>
           </div>
         </div>

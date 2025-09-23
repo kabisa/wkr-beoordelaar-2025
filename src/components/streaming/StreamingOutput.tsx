@@ -5,7 +5,7 @@ import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Square, RotateCcw, Play, Zap, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Loader2, Square, RotateCcw, Play, Zap, Clock, CheckCircle, AlertCircle, Copy, Check } from 'lucide-react'
 import { useAnalysisStream } from '@/hooks/useAnalysisStream'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -25,6 +25,7 @@ export function StreamingOutput({
 }: StreamingOutputProps) {
   const { state, startAnalysis, stopAnalysis, resetAnalysis, isStreaming } = useAnalysisStream()
   const [startTime, setStartTime] = useState<number | null>(null)
+  const [isCopied, setIsCopied] = useState(false)
   const completedRef = useRef(false)
 
   const handleStart = async () => {
@@ -39,7 +40,18 @@ export function StreamingOutput({
 
   const handleReset = () => {
     completedRef.current = false
+    setIsCopied(false)
     resetAnalysis()
+  }
+
+  const handleCopyMarkdown = async () => {
+    try {
+      await navigator.clipboard.writeText(state.content)
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error)
+    }
   }
 
   useEffect(() => {
@@ -216,11 +228,33 @@ export function StreamingOutput({
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">WKR Analysis Results</CardTitle>
-              {state.status === 'complete' && (
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  Complete
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {state.status === 'complete' && state.content && (
+                  <Button
+                    onClick={handleCopyMarkdown}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="h-4 w-4 text-green-600" />
+                        <span>Gekopieerd!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        <span>Kopieer Markdown</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+                {state.status === 'complete' && (
+                  <Badge variant="default" className="bg-green-100 text-green-800">
+                    Complete
+                  </Badge>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-6">
