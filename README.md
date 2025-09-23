@@ -1,6 +1,8 @@
 # Kabisa WKR Beoordelaar 2025
 
-Een Next.js webapplicatie die Nederlandse XAF (XML Audit Files) automatisch analyseert met behulp van Google Gemini AI om boekhoudkundige inzichten op het gebied van de werkkostenregeling te genereren.
+Een gestroomlijnde Next.js webapplicatie die Nederlandse XAF (XML Audit Files) automatisch analyseert met behulp van Google Gemini AI om boekhoudkundige inzichten op het gebied van de werkkostenregeling te genereren.
+
+🔗 **GitHub Repository**: https://github.com/kabisa/wkr-beoordelaar-2025
 
 ## 🎯 Doel van de Applicatie
 
@@ -24,8 +26,8 @@ Deze tool helpt accountants, boekhouders en financiële controllers bij het anal
 
 1. **Clone de repository**
 ```bash
-git clone <repository-url>
-cd wkr-tool
+git clone https://github.com/kabisa/wkr-beoordelaar-2025.git
+cd wkr-beoordelaar-2025
 ```
 
 2. **Installeer dependencies**
@@ -43,7 +45,7 @@ cp .env.example .env.local
 En pas de volgende verplichte waarden aan in `.env.local`:
 ```bash
 # Verplicht: Je Google Gemini API key
-GEMINI_API_KEY=your_gemini_api_key_here
+GOOGLE_AI_API_KEY=your_gemini_api_key_here
 
 # Optioneel: Pas configuratie aan (defaults zijn al ingesteld)
 GEMINI_MODEL=gemini-2.5-pro
@@ -52,7 +54,7 @@ GEMINI_MAX_OUTPUT_TOKENS=4096
 ```
 
 **📋 Volledige configuratie opties** (zie `.env.example` voor alle beschikbare opties):
-- `GEMINI_API_KEY` - **Verplicht**: Google Gemini API sleutel
+- `GOOGLE_AI_API_KEY` - **Verplicht**: Google Gemini API sleutel
 - `GEMINI_MODEL` - AI model (default: gemini-2.5-pro)
 - `GEMINI_TEMPERATURE` - Creativiteit (0.0-2.0, default: 0.1)
 - `GEMINI_MAX_OUTPUT_TOKENS` - Max response tokens (default: 4096)
@@ -91,37 +93,35 @@ De applicatie accepteert Nederlandse XAF (XML Audit Files) bestanden tot 100MB. 
 
 ## 🧠 AI Analyse
 
-De applicatie gebruikt Google Gemini 2.5 Pro om WKR-gefilterde transacties te analyseren met 4 verschillende analyse types:
+De applicatie gebruikt Google Gemini 2.5 Pro om WKR-gefilterde transacties te analyseren met een gestroomlijnde interface en automatische workflow:
 
 ### 📊 Analyse Types
 
 1. **🎯 WKR Compliance Analyse**
-   - Identificeert WKR-relevante transacties
-   - Controleert naleving van de Werkkostenregeling
-   - Geeft risico-categorieën (Hoog/Gemiddeld/Laag)
-   - Concrete aanbevelingen voor compliance verbetering
+   - Automatische categorisatie van WKR-relevante transacties
+   - Detectie van vrijstellingen en uitzonderingen
+   - Compliance score en risicobeoordelingen
+   - Concrete aanbevelingen voor verbetering
 
-2. **⚠️ Risico Analyse**
-   - Financiële risico's en ongebruikelijke patronen
-   - Compliance risico's voor overheidsregeling
-   - Operationele risico's en procesfouten
-   - Prioritering naar impact en waarschijnlijkheid
+2. **🔍 Gedetailleerde WKR Analyse**
+   - Vrije ruimte berekeningen op basis van loonkosten
+   - Gedetailleerde kostenspecificatie per categorie
+   - Uitgebreid actieplan met prioriteiten
+   - Diepgaande WKR regelgeving compliance check
 
-3. **🔍 Patroon Analyse**
-   - Frequentie en timing patronen
-   - Ongebruikelijke bedragen en herhalingen
-   - Account combinaties en anomalieën
-   - Seizoens trends en uitschieters
-
-4. **✨ Aangepaste Analyse**
+3. **✨ Aangepaste Analyse**
    - Gebruik je eigen prompts voor specifieke vragen
    - Flexibele analyse voor unieke use cases
    - Gerichte inzichten op maat
+   - Domein expertise met WKR context
 
 ### 🚀 Features
 
-- **Real-time Streaming**: Live analyse output tijdens verwerking
-- **Performance Monitoring**: Token usage en response times
+- **Gestroomlijnde Workflow**: Automatische filtering na file upload, geen handmatige stappen
+- **Real-time Streaming**: Live analyse output tijdens verwerking (altijd ingeschakeld)
+- **Copy Markdown Functionaliteit**: Eenvoudig kopiëren van analyse resultaten
+- **Debug Modus**: Uitgebreide debug informatie via `?debug=true` URL parameter
+- **Performance Monitoring**: Token usage en response times tracking
 - **Rate Limiting**: 60 requests per minuut voor stabiele performance
 - **Error Handling**: Uitgebreide error recovery met retry logic
 
@@ -146,16 +146,17 @@ De applicatie biedt verschillende API endpoints voor AI functionaliteit:
 
 ### Core Endpoints
 - `POST /api/parse` - Upload en parseer XAF bestanden
+- `POST /api/filter` - Automatische WKR filtering van transacties
 - `GET /api/parse/[sessionId]` - Ophalen van volledige transactiedata
-- `POST /api/ai/analyze` - Standaard AI analyse van transacties
-- `POST /api/ai/stream` - Streaming AI analyse voor real-time output
+- `POST /api/ai/stream-with-docs` - Document-enhanced streaming AI analyse
+- `POST /api/ai/stream` - Standaard streaming AI analyse
 - `GET /api/ai/stats` - Performance statistieken en monitoring
 
 ### AI Analysis Request Format
 ```json
 {
   "transactions": [...],        // Array van WKR-gefilterde transacties
-  "analysisType": "wkr-compliance", // "risk-assessment", "pattern-analysis", "custom"
+  "analysisType": "wkr-compliance", // "wkr-detailed", "custom"
   "prompt": "..."              // Alleen voor custom analyse type
 }
 ```
