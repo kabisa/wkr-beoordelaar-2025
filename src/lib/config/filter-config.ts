@@ -12,6 +12,12 @@ export class FilterConfigManager {
   // Save configuration to localStorage
   saveConfiguration(config: FilterConfiguration): void {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        console.warn('Cannot save configuration: localStorage not available on server')
+        return
+      }
+
       this.validateConfiguration(config)
 
       const storageKey = `${this.STORAGE_PREFIX}-${config.name.toLowerCase().replace(/\s+/g, '-')}`
@@ -37,6 +43,11 @@ export class FilterConfigManager {
   // Load configuration from localStorage
   loadConfiguration(name: string): FilterConfiguration | null {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        return null
+      }
+
       const storageKey = `${this.STORAGE_PREFIX}-${name.toLowerCase().replace(/\s+/g, '-')}`
       const saved = localStorage.getItem(storageKey)
 
@@ -66,6 +77,11 @@ export class FilterConfigManager {
   // List all saved configurations
   listConfigurations(): string[] {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        return []
+      }
+
       const listKey = `${this.STORAGE_PREFIX}-list`
       const saved = localStorage.getItem(listKey)
       return saved ? JSON.parse(saved) : []
@@ -77,6 +93,11 @@ export class FilterConfigManager {
   // Delete a configuration
   deleteConfiguration(name: string): boolean {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        return false
+      }
+
       const storageKey = `${this.STORAGE_PREFIX}-${name.toLowerCase().replace(/\s+/g, '-')}`
       localStorage.removeItem(storageKey)
 
@@ -253,6 +274,11 @@ export class FilterConfigManager {
   // Update the list of available configurations
   private updateConfigurationList(configName: string): void {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        return
+      }
+
       const listKey = `${this.STORAGE_PREFIX}-list`
       const currentList = this.listConfigurations()
 
@@ -268,6 +294,12 @@ export class FilterConfigManager {
   // Reset to factory defaults
   resetToDefaults(): void {
     try {
+      // Check if running in browser environment
+      if (typeof window === 'undefined') {
+        console.warn('Cannot reset configurations: localStorage not available on server')
+        return
+      }
+
       // Clear all stored configurations
       const configs = this.listConfigurations()
       configs.forEach(name => this.deleteConfiguration(name))

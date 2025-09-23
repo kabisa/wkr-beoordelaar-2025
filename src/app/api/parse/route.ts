@@ -109,12 +109,29 @@ export async function POST(request: NextRequest) {
     // For now, we'll include a sessionId for frontend state management
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
+    // Store full data temporarily (in memory for this demo)
+    // In production, this would be stored in Redis/database
+    if (!(global as any).parsedDataCache) {
+      (global as any).parsedDataCache = new Map()
+    }
+
+    (global as any).parsedDataCache.set(sessionId, {
+      transactions: parsedData.transactions,
+      accounts: parsedData.accounts,
+      timestamp: Date.now()
+    })
+
     // Type assertion for sessionId
     const responseDataWithSession = {
       ...responseData,
       data: {
         ...responseData.data,
-        sessionId
+        sessionId,
+        // Include full data for smaller datasets, otherwise provide access method
+        fullTransactions: parsedData.transactions.length <= 1000 ? parsedData.transactions : undefined,
+        fullAccounts: parsedData.accounts.length <= 1000 ? parsedData.accounts : undefined,
+        hasFullData: true,
+        fullDataAvailable: parsedData.transactions.length > 1000
       }
     }
 

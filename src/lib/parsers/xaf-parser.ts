@@ -318,7 +318,7 @@ export class XAFParser {
       systemEntryTime: this.safeString(transaction.systemEntryTime),
       glPostingDate: this.safeString(transaction.glPostingDate),
       sourceDocumentID: this.safeString(transaction.sourceDocumentID),
-      lines: this.extractTransactionLines(transaction.line, accounts)
+      lines: this.extractTransactionLines(transaction.line || transaction.trLine, accounts)
     }))
   }
 
