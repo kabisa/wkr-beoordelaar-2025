@@ -108,8 +108,8 @@ export function StreamingOutput({
             <Zap className="h-5 w-5" />
             Streaming WKR Analysis
             {state.metadata?.documentEnhanced && (
-              <Badge variant="secondary" className="ml-2">
-                Document Enhanced
+              <Badge variant="secondary" className="ml-2 hidden">
+                Document verrijkt
               </Badge>
             )}
           </CardTitle>
@@ -119,14 +119,14 @@ export function StreamingOutput({
             {state.status === 'idle' && (
               <Button onClick={handleStart} disabled={!transactions.length}>
                 {getStatusIcon()}
-                <span className="ml-2">Start Analysis</span>
+                <span className="ml-2">Start Analyse</span>
               </Button>
             )}
 
             {isStreaming && (
               <Button onClick={stopAnalysis} variant="destructive">
                 <Square className="h-4 w-4 mr-2" />
-                Stop Analysis
+                Stop Analyse
               </Button>
             )}
 
@@ -139,7 +139,7 @@ export function StreamingOutput({
 
             <div className="flex-1">
               <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
-                <span>{state.progress.message || 'Ready to analyze'}</span>
+                <span>{state.progress.message || 'Klaar om te analyseren'}</span>
                 <div className="flex items-center gap-2">
                   {startTime && (
                     <div className="flex items-center gap-1">
@@ -149,7 +149,7 @@ export function StreamingOutput({
                   )}
                   {state.metadata?.transactionCount && (
                     <Badge variant="outline" className="text-xs">
-                      {state.metadata.transactionCount} transactions
+                      {state.metadata.transactionCount} transacties
                     </Badge>
                   )}
                 </div>
@@ -160,9 +160,9 @@ export function StreamingOutput({
 
           {/* Metadata Display */}
           {state.metadata && (
-            <div className="flex items-center gap-4 text-xs text-gray-500">
+            <div className="flex items-center gap-4 text-xs text-gray-500 hidden">
               {state.metadata.documentsUsed > 0 && (
-                <span>📄 {state.metadata.documentsUsed} WKR documents</span>
+                <span>📄 {state.metadata.documentsUsed} WKR documenten</span>
               )}
               {state.metadata.model && (
                 <span>🤖 {state.metadata.model}</span>
@@ -187,7 +187,7 @@ export function StreamingOutput({
                 </div>
                 {state.progress.contentLength && (
                   <div className="text-xs text-blue-700 mt-1">
-                    {state.progress.contentLength} characters received
+                    {state.progress.contentLength} tekens ontvangen
                   </div>
                 )}
               </div>
@@ -206,7 +206,7 @@ export function StreamingOutput({
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
               <div>
-                <h3 className="font-medium text-red-900 mb-1">Analysis Error</h3>
+                <h3 className="font-medium text-red-900 mb-1">Analysefout</h3>
                 <p className="text-sm text-red-700">{state.error}</p>
                 <Button
                   onClick={handleStart}
@@ -214,7 +214,7 @@ export function StreamingOutput({
                   size="sm"
                   className="mt-2 border-red-300 text-red-700 hover:bg-red-100"
                 >
-                  Try Again
+                  Probeer opnieuw
                 </Button>
               </div>
             </div>
@@ -227,7 +227,7 @@ export function StreamingOutput({
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">WKR Analysis Results</CardTitle>
+              <CardTitle className="text-lg">WKR Analyse Resultaten</CardTitle>
               <div className="flex items-center gap-2">
                 {state.status === 'complete' && state.content && (
                   <Button
@@ -251,7 +251,7 @@ export function StreamingOutput({
                 )}
                 {state.status === 'complete' && (
                   <Badge variant="default" className="bg-green-100 text-green-800">
-                    Complete
+                    Voltooid
                   </Badge>
                 )}
               </div>
@@ -355,7 +355,7 @@ export function StreamingOutput({
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                   </div>
-                  <span className="text-sm text-gray-600">AI is analyzing your transactions...</span>
+                  <span className="text-sm text-gray-600">AI analyseert je transacties...</span>
                 </div>
               )}
             </div>

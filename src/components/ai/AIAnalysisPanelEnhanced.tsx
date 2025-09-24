@@ -101,7 +101,7 @@ export default function AIAnalysisPanelEnhanced({ transactions = [], onAnalysisC
   return (
     <div className="space-y-6">
       {/* Configuration Panel */}
-      <Card>
+      <Card className="hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-blue-600" />

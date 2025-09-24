@@ -52,7 +52,7 @@ export function useAnalysisStream() {
       setState({
         status: 'connecting',
         content: '',
-        progress: { stage: 'initializing', message: 'Connecting to analysis service...' },
+        progress: { stage: 'initializing', message: 'Verbinden met analysedienst...' },
         error: undefined
       })
 
@@ -128,7 +128,7 @@ export function useAnalysisStream() {
         ...prev,
         status: 'complete',
         content: fullContent,
-        progress: { ...prev.progress, stage: 'complete', message: 'Analysis complete!' }
+        progress: { ...prev.progress, stage: 'complete', message: 'Analyse voltooid!' }
       } : prev)
 
     } catch (error: any) {
@@ -150,7 +150,7 @@ export function useAnalysisStream() {
           metadata: message.data,
           progress: {
             stage: 'initialized',
-            message: `Processing ${message.data.transactionCount} transactions${message.data.fallbackMode ? ' (fallback mode)' : ''}...`,
+            message: `Verwerken van ${message.data.transactionCount} transacties${message.data.fallbackMode ? ' (noodmodus)' : ''}...`,
             percentage: 10
           }
         }))
@@ -165,7 +165,7 @@ export function useAnalysisStream() {
           progress: {
             ...prev.progress,
             stage: 'streaming',
-            message: 'Receiving analysis...',
+            message: 'Analyse ontvangen...',
             contentLength: newContent.length,
             percentage: Math.min(90, 30 + (newContent.length / 100))
           }
@@ -181,7 +181,7 @@ export function useAnalysisStream() {
           status: 'complete',
           progress: {
             stage: 'complete',
-            message: 'Analysis complete!',
+            message: 'Analyse voltooid!',
             percentage: 100
           },
           metadata: {

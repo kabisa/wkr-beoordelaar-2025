@@ -52,7 +52,7 @@ export default function Home() {
             )}
           </ErrorBoundary>
 
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8 hidden">
             <div className="text-center">
               <div className="bg-blue-100 rounded-full p-3 w-12 h-12 mx-auto mb-4">
                 <svg className="w-6 h-6 text-blue-600 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">

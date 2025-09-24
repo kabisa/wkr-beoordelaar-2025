@@ -165,7 +165,7 @@ export function ParseResults({ result }: ParseResultsProps) {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 hidden">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
