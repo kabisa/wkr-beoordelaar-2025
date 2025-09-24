@@ -19,8 +19,7 @@ import {
   Info,
   Filter,
   Download,
-  Eye,
-  BarChart3
+  Eye
 } from 'lucide-react'
 
 import AIAnalysisPanelEnhanced from '../ai/AIAnalysisPanelEnhanced'
@@ -299,36 +298,6 @@ export function ParseResults({ result }: ParseResultsProps) {
         </Alert>
       )}
 
-      {/* Simplified Filter Results */}
-      {filterResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-green-500" />
-              WKR Filter Resultaten
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Essential Filter Statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-600">{filterResult.stats?.totalFiltered || 0}</p>
-                  <p className="text-sm text-blue-700">Gefilterde regels</p>
-                </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600">{filterResult.stats?.filterRatio || '0'}%</p>
-                  <p className="text-sm text-green-700">Filter ratio</p>
-                </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <p className="text-2xl font-bold text-orange-600">{filterResult.stats?.processingTime || 0}ms</p>
-                  <p className="text-sm text-orange-700">Verwerkingstijd</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Enhanced AI Analysis Panel - Only show after successful WKR filtering */}
       {filterResult && filterResult.filtered && filterResult.filtered.length > 0 && (
