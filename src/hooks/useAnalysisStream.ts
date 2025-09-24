@@ -39,8 +39,6 @@ export function useAnalysisStream() {
     analysisType?: string
     prompt?: string
   }) => {
-    let usedFallback = false
-
     try {
       // Cancel any existing request
       if (abortControllerRef.current) {
@@ -58,62 +56,22 @@ export function useAnalysisStream() {
         error: undefined
       })
 
-      // Try document-enhanced streaming first
-      try {
-        const response = await fetch('/api/ai/stream-with-docs', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-          signal: abortControllerRef.current.signal
-        })
+      // Start streaming analysis (with server-side fallback)
+      const response = await fetch('/api/ai/stream-with-docs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: abortControllerRef.current.signal
+      })
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        await readStream(response)
-
-      } catch (docError: any) {
-        // Check if it's a document access error
-        if (docError.message.includes('403') || docError.message.includes('Forbidden') ||
-            docError.message.includes('do not have permission') || docError.message.includes('may not exist')) {
-
-          console.log('📋 Document-enhanced analysis failed, falling back to regular streaming...')
-          usedFallback = true
-
-          // Update progress to show fallback
-          setState(prev => ({
-            ...prev,
-            progress: {
-              stage: 'initializing',
-              message: 'Documents unavailable, using regular analysis...'
-            }
-          }))
-
-          // Try regular streaming as fallback
-          const fallbackResponse = await fetch('/api/ai/stream', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-            signal: abortControllerRef.current.signal
-          })
-
-          if (!fallbackResponse.ok) {
-            const errorData = await fallbackResponse.json()
-            throw new Error(errorData.error || `HTTP ${fallbackResponse.status}: ${fallbackResponse.statusText}`)
-          }
-
-          await readStream(fallbackResponse, usedFallback)
-
-        } else {
-          throw docError
-        }
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
       }
+
+      await readStream(response)
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -128,7 +86,7 @@ export function useAnalysisStream() {
     }
   }, [])
 
-  const readStream = async (response: Response, usedFallback: boolean = false) => {
+  const readStream = async (response: Response) => {
     const reader = response.body?.getReader()
     if (!reader) {
       throw new Error('No response body available')
@@ -157,7 +115,7 @@ export function useAnalysisStream() {
               const data = JSON.parse(line.slice(6))
               await handleStreamMessage(data, fullContent, (content) => {
                 fullContent = content
-              }, usedFallback)
+              })
             } catch (error) {
               console.warn('Failed to parse stream message:', line)
             }
@@ -183,20 +141,16 @@ export function useAnalysisStream() {
   const handleStreamMessage = async (
     message: any,
     currentContent: string,
-    updateContent: (content: string) => void,
-    usedFallback: boolean = false
+    updateContent: (content: string) => void
   ) => {
     switch (message.type) {
       case 'metadata':
         setState(prev => ({
           ...prev,
-          metadata: {
-            ...message.data,
-            documentEnhanced: !usedFallback
-          },
+          metadata: message.data,
           progress: {
             stage: 'initialized',
-            message: `Processing ${message.data.transactionCount} transactions${usedFallback ? ' (standard mode)' : ''}...`,
+            message: `Processing ${message.data.transactionCount} transactions${message.data.fallbackMode ? ' (fallback mode)' : ''}...`,
             percentage: 10
           }
         }))

@@ -161,6 +161,101 @@ BELANGRIJKE INSTRUCTIES:
         } catch (error) {
           console.error('Document-enhanced streaming error:', error)
 
+          // Check if this is a document access error (403 Forbidden)
+          const isDocumentAccessError = error instanceof GeminiError &&
+            (error.message.includes('403') ||
+             error.message.includes('Forbidden') ||
+             error.message.includes('do not have permission') ||
+             error.message.includes('may not exist'))
+
+          if (isDocumentAccessError) {
+            console.log('📋 Document access failed, falling back to regular streaming analysis...')
+
+            // Fallback to regular Gemini analysis
+            try {
+              // Import regular Gemini client
+              const { GeminiClient } = await import('@/lib/ai/gemini-client')
+              const regularGemini = new GeminiClient({
+                apiKey: process.env.GOOGLE_AI_API_KEY!,
+                model: 'gemini-2.5-pro',
+                temperature: 0.1
+              })
+
+              // Update metadata to show fallback mode
+              const fallbackData = {
+                type: 'metadata',
+                data: {
+                  analysisType,
+                  transactionCount: transactions.length,
+                  timestamp: new Date().toISOString(),
+                  documentEnhanced: false,
+                  documentsUsed: 0,
+                  fallbackMode: true,
+                  rateLimitInfo: {
+                    remaining: rateLimiter.getRemainingRequests(clientIP),
+                    resetTime: rateLimiter.getResetTime(clientIP)
+                  }
+                }
+              }
+
+              controller.enqueue(`data: ${JSON.stringify(fallbackData)}\n\n`)
+
+              // Build regular prompt without document context
+              const regularPrompt = buildRegularWKRPrompt(analysisPrompt, transactionData)
+
+              // Stream regular analysis
+              const regularResult = await regularGemini.generateStreamingAnalysis(regularPrompt)
+
+              for await (const chunk of regularResult) {
+                const streamData = {
+                  type: 'content',
+                  data: chunk
+                }
+                controller.enqueue(`data: ${JSON.stringify(streamData)}\n\n`)
+              }
+
+              // Send completion signal for fallback
+              const completionData = {
+                type: 'complete',
+                data: {
+                  timestamp: new Date().toISOString(),
+                  documentEnhanced: false,
+                  fallbackMode: true,
+                  metadata: {
+                    promptDetails: {
+                      analysisPrompt: regularPrompt,
+                      transactionDataPreview: transactionData.substring(0, 500) + '...',
+                      fullTransactionDataLength: transactionData.length,
+                      systemInstruction: 'Standard WKR analysis without document context',
+                      documentsIncluded: []
+                    }
+                  }
+                }
+              }
+
+              controller.enqueue(`data: ${JSON.stringify(completionData)}\n\n`)
+              controller.close()
+              return
+
+            } catch (fallbackError) {
+              console.error('Fallback analysis also failed:', fallbackError)
+
+              const errorData = {
+                type: 'error',
+                data: {
+                  message: 'Zowel document-enhanced als fallback analyse zijn mislukt',
+                  code: 'FALLBACK_FAILED',
+                  documentEnhanced: false
+                }
+              }
+
+              controller.enqueue(`data: ${JSON.stringify(errorData)}\n\n`)
+              controller.close()
+              return
+            }
+          }
+
+          // For other errors, send regular error response
           const errorData = {
             type: 'error',
             data: {
@@ -206,4 +301,35 @@ function formatTransactionsForPrompt(transactions: any[]): string {
       `Grootboek: ${line.accountId || 'N/A'} ${line.accountDescription || ''} | Boeking: ${transaction.nr || 'N/A'} ${transaction.desc || line.description || ''} | Bedrag: €${line.amount || '0,00'} | Datum: ${transaction.trDt || line.effectiveDate || 'N/A'}`
     ).join('\n')
   }).join('\n')
+}
+
+function buildRegularWKRPrompt(analysisPrompt: string, transactionData: string): string {
+  return `Je bent een gespecialiseerde Nederlandse fiscalist met expertise in de werkkostenregeling (WKR).
+Je analyseert boekhoudkundige transacties om te bepalen welke kosten onder de WKR vallen.
+
+BELANGRIJK:
+- Gebruik ALLEEN Nederlandse boekhoudterminologie
+- Geef ALTIJD een zekerheidspercentage (0-100%)
+- Verwijs naar specifieke WKR artikelen waar relevant
+- GEBRUIK NOOIT HET INTERNET OM TE ZOEKEN
+- Baseer je analyse uitsluitend op de verstrekte context en je kennis
+
+Voor elke boeking bepaal je:
+1. **Valt de boeking onder de werkkostenregeling?** (Ja/Nee)
+2. **Hoe zeker ben je?** (percentage)
+3. **Is er een gerichte vrijstelling van toepassing?**
+4. **Specifieke redenering voor je beslissing**
+
+OUTPUTFORMAAT:
+Geef een gestructureerde markdown analyse met:
+1. Samenvatting
+2. Belangrijkste bevindingen per boeking
+3. Vrijstellingen overzicht
+4. Berekeningen vrije ruimte
+5. Aanbevelingen
+
+${analysisPrompt}
+
+TRANSACTIEGEGEVENS:
+${transactionData}`
 }
